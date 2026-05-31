@@ -1,7 +1,9 @@
 # Readout — Prototype Plan
 
 **Platform:** Android, Kotlin, min SDK 31
-**Dev device:** Pixel 7
+**Dev devices:**
+- **Pixel 7** (own): primary for Phases 1–2 + on-device LLM benchmarking representing "older device / cloud-fallback path"
+- **Pixel 10 Pro or equivalent flagship** (borrowed, arriving before Phase 3): represents "modern device / AICore + Gemini Nano v3 path"
 **Distribution:** Sideload for personal use during prototype; Play Store as eventual goal
 **Framing:** Accessibility tool first (motor impairment, low vision, situational disability — hands occupied while cooking, driving, cycling, holding a child). Specific RideWithGPS / cycling use case is gravy.
 
@@ -22,12 +24,18 @@ Honest competitive note: Gemini Live is the only thing close, and even it requir
 | Trigger | Wake word + tap-to-talk (equal priority) | Wake word for hands-free; tap for users who can touch but can't speak clearly, or for noisy environments |
 | Foreground service | Required, user-initiated per session | Honest UX, reasonable battery, no policy friction |
 | Audio source | `AudioSource.VOICE_RECOGNITION` on the phone's built-in mic | No earbuds — naked phone only |
+| Architecture | Multi-module Gradle, interface-driven, DI via Hilt | The prototype exists to discover which implementations work — swap cost dominates iteration speed |
+| Language / UI | Kotlin + Jetpack Compose | Android-idiomatic, first-class coroutine + Flow support |
 
 ## Decisions still open
 
 | Decision | Status | Notes |
 |---|---|---|
-| LLM choice | **Under investigation** | Pixel 7 cannot run AICore / Gemini Nano. Investigating on-device alternatives (MediaPipe LLM Inference + Gemma, llama.cpp Android, MLC LLM, ONNX Runtime Mobile) before committing to cloud Gemini Flash / Claude Haiku. See "LLM investigation" section below. |
+| Primary LLM for flagship devices | Leaning Gemini Nano v3 via AICore | Validate on the borrowed Pixel 10 Pro before locking in. Path is officially supported on Tensor G5. |
+| Fallback LLM for older devices | Cloud Gemini Flash / Claude Haiku 4.5 OR small on-device model (Gemma 3 1B / Qwen 2.5 1.5B) | Benchmark spike on Pixel 7 will decide. Most likely outcome: cloud for quality, sub-1B on-device for offline mode. |
+| Cloud provider, if used | TBD — Gemini Flash, Claude Haiku 4.5, or both behind the interface | Pricing trivial at personal volume; differentiator is quality on the screen-Q&A task |
+| DI framework | Hilt (most likely) | Standard Android, multi-module support, easy test/flavor overrides |
+| Wake word library | Porcupine (most likely) | Free personal-use tier; alternative: OpenWakeWord (Apache-licensed, no key) — revisit if Porcupine licensing blocks Play Store |
 
 ## Validation already done
 
@@ -35,9 +43,73 @@ Honest competitive note: Gemini Live is the only thing close, and even it requir
 
 ---
 
+## Architecture: swap-friendly by design
+
+Every external dependency the prototype touches sits behind an interface in its own Gradle module. This is more structure than a tiny app needs by itself, but the explicit goal is to be able to swap implementations as the prototype evolves — replacing on-device LLM with cloud, Android TTS with cloud voices, Porcupine with OpenWakeWord, AccessibilityService with MediaProjection — without touching session logic or UI.
+
+### Gradle module layout
+
+- `:app` — Application class, navigation, top-level DI wiring, build flavors
+- `:core:common` — Shared models (`ScreenSnapshot`, `Answer`, `Transcript`, `Session`), utilities, coroutine dispatchers
+- `:core:audio` — `SpeechRecognizer` + `TtsEngine` interfaces and Android implementations
+- `:core:screen` — `ScreenReader` interface; AccessibilityService implementation (later: MediaProjection+OCR implementation)
+- `:core:llm` — `LlmClient` interface and implementations (cloud Gemini Flash, on-device AICore, on-device llama.cpp/MediaPipe, `EchoClient` for tests)
+- `:core:wake` — `WakeWordEngine` interface, Porcupine implementation, `Activator` strategies (wake-word / tap / notification-action)
+- `:core:session` — Pipeline orchestrator. Depends only on interfaces from other `:core` modules — knows nothing about which implementations are wired in.
+- `:feature:settings` — Settings UI
+- `:feature:onboarding` — Permission + consent flow
+
+`:core:session` and `:feature:*` modules must never depend on a concrete implementation — only on interfaces. Implementations are wired in `:app`.
+
+### Key interfaces (Phase 1 stubs; real implementations land later)
+
+```kotlin
+interface LlmClient {
+    suspend fun answer(question: String, screen: ScreenSnapshot, app: String): Answer
+}
+
+interface SpeechRecognizer {
+    fun listen(): Flow<Transcript>  // partial + final transcripts
+}
+
+interface TtsEngine {
+    suspend fun speak(text: String, prefs: TtsPrefs)
+}
+
+interface ScreenReader {
+    suspend fun snapshot(): ScreenSnapshot
+}
+
+interface WakeWordEngine {
+    fun events(): Flow<WakeEvent>
+}
+
+interface Activator {
+    fun activations(): Flow<Activation>  // wake-word, tap, notification-action all conform
+}
+```
+
+### DI: Hilt
+
+Standard for Android, supports multi-module, easy to override implementations in tests and across build variants. Build flavors planned: `cloud` (wires `CloudGeminiFlashClient`), `onDevice` (wires the AICore client when available), `dev` (wires `EchoClient` for fast iteration without LLM calls).
+
+### Why this much structure for a prototype
+
+The prototype exists to discover which implementations work. Swap cost dominates early-stage iteration speed. The cost of building eight small modules upfront is hours; the cost of refactoring a monolith mid-prototype is days, and worse, it discourages exactly the experimentation the prototype is for.
+
+---
+
 ## LLM investigation (pre-Phase 3 spike)
 
-Before committing to an LLM strategy, evaluate on-device options on a Pixel 7:
+With a flagship device coming, the LLM strategy splits in two:
+
+**Path A — Flagship (Pixel 10 Pro borrowed):** Gemini Nano v3 via AICore is the obvious primary choice. Validate latency and quality on the actual device once it arrives. This is the "happy path" — fully on-device, no network, no privacy disclosure burden, Google-supported.
+
+**Path B — Older devices (Pixel 7):** No AICore. Choices are (a) cloud Gemini Flash / Claude Haiku, (b) sub-1B on-device model via MediaPipe LLM Inference or llama.cpp, or (c) feature-degraded mode that requires connectivity. Weekend benchmark spike on the Pixel 7 informs this. Most likely outcome: cloud as default for quality, sub-1B on-device as an optional "offline mode" toggle in settings.
+
+The `LlmClient` interface makes both paths first-class — `:app` wires the right implementation at startup based on device capability detection.
+
+### Frameworks under evaluation for Path B
 
 - **MediaPipe LLM Inference** — Google's official path for on-device LLMs. Supports Gemma 2B, Phi-2, Falcon, StableLM. Optimized for mobile, GPU-accelerated where possible.
 - **MLC LLM** — Apache TVM-based, supports Gemma, Llama, Phi, Mistral on Android with GPU/NPU acceleration.
@@ -57,18 +129,36 @@ Output of this spike: a recommendation to either (a) commit to on-device for v1,
 
 ## Phase 1 — Foundations
 
-Goal: prove the audio loop works end-to-end, with Play Store-ready scaffolding from the start.
+Goal: prove the audio loop works end-to-end **and** establish the swap-friendly module + interface skeleton so every future phase plugs in cleanly.
 
-- Empty Android app, Kotlin, Jetpack Compose for UI.
+**Module scaffolding:**
+- Gradle multi-module project per the layout above (`:app`, `:core:common`, `:core:audio`, `:core:screen`, `:core:llm`, `:core:wake`, `:core:session`, `:feature:settings`, `:feature:onboarding`).
+- Hilt DI wired across modules.
+- Kotlin + Jetpack Compose for any UI.
+- Build flavors: `dev` (echo/stub implementations), `cloud` (cloud LLM impl), `onDevice` (AICore impl, no-op on Pixel 7).
+
+**Interface stubs (all modules):**
+- `LlmClient` with an `EchoClient` impl that returns the question reversed, just to prove wiring.
+- `ScreenReader` with a `FakeScreenReader` impl that returns a hardcoded `ScreenSnapshot`.
+- `SpeechRecognizer` interface with real Android `SpeechRecognizer` impl (`EXTRA_PREFER_OFFLINE`, `AudioSource.VOICE_RECOGNITION`).
+- `TtsEngine` interface with real Android `TextToSpeech` impl, media-volume-aware.
+- `WakeWordEngine` with a `ManualActivator` impl driven by an on-screen button (real Porcupine lands in Phase 4).
+- `:core:session` orchestrator that wires the pipeline: activation → SpeechRecognizer → ScreenReader → LlmClient → TtsEngine.
+
+**Runtime:**
 - Foreground service declaring `FOREGROUND_SERVICE_MICROPHONE` type.
 - Single launcher button to start/stop the session.
 - Persistent notification while service is running, showing session state.
-- Android `SpeechRecognizer` (on-device mode, `EXTRA_PREFER_OFFLINE`) triggered by a debug button.
-- Android `TextToSpeech` for output, routed to default audio output, with media-volume awareness.
-- `AudioSource.VOICE_RECOGNITION` for the mic input path.
-- **Play Store scaffolding from day one:** accessibility manifest declaration, privacy policy stub, consent flow for accessibility permissions and audio recording.
 
-**Exit criteria:** Tap button → speak → see transcript in logs → hear canned TTS reply through the phone speaker. Manifest, permissions, and consent flow ready for Play Store policy review even if not yet submitted.
+**Play Store scaffolding from day one:**
+- Accessibility manifest declaration with documented use cases.
+- Privacy policy stub in repo.
+- Consent flow for accessibility permissions and audio recording.
+
+**Exit criteria:**
+- Tap button → speak → see transcript in logs → orchestrator calls `EchoClient` → hear the echoed text spoken through the phone speaker.
+- All major interfaces have at least one stub implementation; swapping `EchoClient` for a different `LlmClient` in `:app` DI module is a one-line change.
+- Manifest, permissions, and consent flow ready for Play Store policy review even if not yet submitted.
 
 ## Phase 2 — Screen reading via AccessibilityService
 
@@ -149,16 +239,16 @@ Goal: ship.
 
 | Phase | Effort | Notes |
 |---|---|---|
-| LLM investigation | 1 weekend | Benchmark candidates on Pixel 7 before locking in |
-| 1 | 1 weekend | Boilerplate + Play-Store scaffolding |
-| 2 | 1 weekend | Accessibility tree walking + RideWithGPS validation |
-| 3 | 1-2 weekends | LLM integration; depends on outcome of investigation |
-| 4 | 1 weekend | Porcupine + tap-to-talk paths |
-| 5 | 1-2 weekends | MediaProjection + OCR fallback |
-| 6 | Open-ended | Depends on weather, schedule, persona availability |
+| 1 | 1–2 weekends | Multi-module + Hilt scaffolding + interface stubs + audio loop + Play-Store scaffolding |
+| 2 | 1 weekend | AccessibilityService implementation + RideWithGPS validation |
+| LLM spike (Pixel 7) | 1 weekend | Benchmark MediaPipe + llama.cpp on small models. Parallel to Phase 2 if time permits. |
+| 3 | 1-2 weekends | LlmClient implementations: cloud Gemini Flash + (on borrowed flagship) AICore Gemini Nano |
+| 4 | 1 weekend | Porcupine wake-word + tap-to-talk activators |
+| 5 | 1-2 weekends | MediaProjection + OCR fallback ScreenReader implementation |
+| 6 | Open-ended | Multi-persona field test |
 | 7 | Open-ended | Beta feedback, Play Store iteration |
 
-Realistic timeline to a working personal prototype (LLM spike + Phases 1–4): **5–7 focused weekends**.
+Realistic timeline to a working personal prototype (Phases 1–4 + LLM spike): **6–8 focused weekends**, with the borrowed flagship arriving by Phase 3.
 Realistic timeline to Play Store submission: add another **4–6 weekends** for Phases 5–7 plus beta.
 
 ## Risks & unknowns
