@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Android / Gradle (pre-emptive — codebase not yet scaffolded)
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+.gradle/
+local.properties
+captures/
+*.hprof
+
+# Kotlin
+.kotlin/
+
+# Logs & local artifacts
+*.log
