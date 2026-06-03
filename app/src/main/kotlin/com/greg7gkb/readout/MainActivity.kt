@@ -16,9 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.greg7gkb.readout.common.di.IoDispatcher
-import com.greg7gkb.readout.common.model.ScreenSnapshot
 import com.greg7gkb.readout.common.model.Session
 import com.greg7gkb.readout.llm.LlmClient
+import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.ui.theme.ReadoutTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineDispatcher
@@ -34,19 +34,20 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var llmClient: LlmClient
 
+    @Inject
+    lateinit var screenReader: ScreenReader
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val session = Session()
-        Log.i(TAG, "session=${session.id} ioDispatcher=$ioDispatcher llm=${llmClient.javaClass.simpleName}")
+        Log.i(TAG, "session=${session.id} llm=${llmClient.javaClass.simpleName} screen=${screenReader.javaClass.simpleName}")
         lifecycleScope.launch {
+            val snapshot = screenReader.snapshot()
+            Log.i(TAG, "snapshot pkg=${snapshot.foregroundPackage} nodes=${snapshot.nodes.size}")
             val answer = llmClient.answer(
                 question = "How far have I ridden?",
-                screen = ScreenSnapshot(
-                    foregroundPackage = "stub",
-                    timestampMillis = System.currentTimeMillis(),
-                    nodes = emptyList(),
-                ),
-                appName = "stub",
+                screen = snapshot,
+                appName = snapshot.foregroundPackage,
             )
             Log.i(TAG, "answer=${answer.text} latencyMs=${answer.latencyMillis}")
         }

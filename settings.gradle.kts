@@ -26,7 +26,7 @@ rootProject.name = "readout"
 include(":app")
 include(":core:common")
 // include(":core:audio")
-// include(":core:screen")
+include(":core:screen")
 include(":core:llm")
 // include(":core:wake")
 // include(":core:session")
