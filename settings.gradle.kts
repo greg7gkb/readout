@@ -23,7 +23,7 @@ dependencyResolutionManagement {
 rootProject.name = "readout"
 
 // Modules will be included here as they're scaffolded, step by step.
-// include(":app")
+include(":app")
 // include(":core:common")
 // include(":core:audio")
 // include(":core:screen")
