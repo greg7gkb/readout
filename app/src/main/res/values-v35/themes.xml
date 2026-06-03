@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Opt out of Android 15's mandatory edge-to-edge enforcement so the
+        status bar keeps its own opaque background and notification icons
+        remain readable. Revisit once we're ready to handle WindowInsets
+        properly throughout the UI.
+    -->
+    <style name="Theme.Readout" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
