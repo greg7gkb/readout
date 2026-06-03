@@ -6,25 +6,30 @@ import com.greg7gkb.readout.common.model.ScreenSnapshot
 import javax.inject.Inject
 
 /**
- * Returns a hardcoded snapshot resembling a RideWithGPS active-ride screen.
+ * Returns a hardcoded snapshot resembling a generic weather-app screen.
  * Lets the rest of the pipeline (LLM, TTS, session orchestrator) be exercised
  * before the real AccessibilityService implementation lands in Phase 2.
+ *
+ * The choice of "weather" is deliberate: it's universally relatable, covers
+ * situational-accessibility scenarios (planning a walk, driving, dressing a
+ * child), and produces labeled values an LLM can reason about — without
+ * committing the product to any particular third-party app.
  */
 class FakeScreenReader @Inject constructor() : ScreenReader {
     override suspend fun snapshot(): ScreenSnapshot = ScreenSnapshot(
-        foregroundPackage = "com.ridewithgps.mobile",
+        foregroundPackage = "com.example.weather",
         timestampMillis = System.currentTimeMillis(),
         nodes = listOf(
-            ScreenNode(text = "Distance", className = "android.widget.TextView", bounds = Bounds(40, 200, 200, 240)),
-            ScreenNode(text = "24.7 mi", className = "android.widget.TextView", bounds = Bounds(40, 250, 360, 340)),
-            ScreenNode(text = "Elapsed", className = "android.widget.TextView", bounds = Bounds(40, 380, 200, 420)),
-            ScreenNode(text = "1:32:18", className = "android.widget.TextView", bounds = Bounds(40, 430, 360, 520)),
-            ScreenNode(text = "Speed", className = "android.widget.TextView", bounds = Bounds(40, 560, 200, 600)),
-            ScreenNode(text = "15.3 mph", className = "android.widget.TextView", bounds = Bounds(40, 610, 360, 700)),
-            ScreenNode(text = "Elevation gained", className = "android.widget.TextView", bounds = Bounds(40, 740, 280, 780)),
-            ScreenNode(text = "1,247 ft", className = "android.widget.TextView", bounds = Bounds(40, 790, 360, 880)),
-            ScreenNode(text = "Route", className = "android.widget.TextView", bounds = Bounds(40, 920, 200, 960)),
-            ScreenNode(text = "Sunday Long Ride", className = "android.widget.TextView", bounds = Bounds(40, 970, 720, 1040)),
+            ScreenNode(text = "San Francisco", className = "android.widget.TextView", bounds = Bounds(40, 200, 720, 280)),
+            ScreenNode(text = "Today", className = "android.widget.TextView", bounds = Bounds(40, 300, 200, 340)),
+            ScreenNode(text = "62°F", className = "android.widget.TextView", bounds = Bounds(40, 360, 360, 480)),
+            ScreenNode(text = "Partly cloudy", className = "android.widget.TextView", bounds = Bounds(40, 500, 500, 560)),
+            ScreenNode(text = "Wind", className = "android.widget.TextView", bounds = Bounds(40, 620, 200, 660)),
+            ScreenNode(text = "8 mph NW", className = "android.widget.TextView", bounds = Bounds(40, 670, 360, 730)),
+            ScreenNode(text = "Humidity", className = "android.widget.TextView", bounds = Bounds(40, 780, 280, 820)),
+            ScreenNode(text = "71%", className = "android.widget.TextView", bounds = Bounds(40, 830, 200, 890)),
+            ScreenNode(text = "Sunset", className = "android.widget.TextView", bounds = Bounds(40, 940, 200, 980)),
+            ScreenNode(text = "7:42 PM", className = "android.widget.TextView", bounds = Bounds(40, 990, 360, 1050)),
         ),
     )
 }

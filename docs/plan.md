@@ -5,7 +5,7 @@
 - **Pixel 7** (own): primary for Phases 1–2 + on-device LLM benchmarking representing "older device / cloud-fallback path"
 - **Pixel 10 Pro or equivalent flagship** (borrowed, arriving before Phase 3): represents "modern device / AICore + Gemini Nano v3 path"
 **Distribution:** Sideload for personal use during prototype; Play Store as eventual goal
-**Framing:** Accessibility tool first (motor impairment, low vision, situational disability — hands occupied while cooking, driving, cycling, holding a child). Specific RideWithGPS / cycling use case is gravy.
+**Framing:** Accessibility tool first. The design center is motor impairment, low vision, and situational disability (hands occupied while cooking, driving, walking, holding a child).
 
 > Provenance: original brainstorm at https://claude.ai/chat/4ef0e697-a037-4c84-b845-7c1a65124e5d
 
@@ -20,7 +20,7 @@ Honest competitive note: Gemini Live is the only thing close, and even it requir
 | Decision | Choice | Rationale |
 |---|---|---|
 | Working name | Readout | |
-| First target app | RideWithGPS | TalkBack validation passed — view hierarchy is readable |
+| First target app | TBD — pick from TalkBack-clean candidates during Phase 2 | View hierarchy must read cleanly via AccessibilityService |
 | Trigger | Wake word + tap-to-talk (equal priority) | Wake word for hands-free; tap for users who can touch but can't speak clearly, or for noisy environments |
 | Foreground service | Required, user-initiated per session | Honest UX, reasonable battery, no policy friction |
 | Audio source | `AudioSource.VOICE_RECOGNITION` on the phone's built-in mic | No earbuds — naked phone only |
@@ -39,7 +39,7 @@ Honest competitive note: Gemini Live is the only thing close, and even it requir
 
 ## Validation already done
 
-- **TalkBack on RideWithGPS** — reads cleanly. AccessibilityService path is viable for the first target app.
+- **TalkBack on a representative third-party app** — reads cleanly. AccessibilityService path is viable as the primary screen-reading approach.
 
 ---
 
@@ -168,9 +168,9 @@ Goal: extract structured text from the foreground app on demand.
 - On demand (not continuously), walk the active window's `AccessibilityNodeInfo` tree.
 - Collect all nodes with `text` or `contentDescription`, along with their screen bounds and class name.
 - Serialize as structured JSON: `{foreground_package, timestamp, nodes: [{text, content_description, bounds, class}]}`.
-- Test against RideWithGPS in active ride mode.
+- Test against a handful of TalkBack-clean third-party apps representative of accessibility use cases (weather, transit, recipe, reader, etc.).
 
-**Exit criteria:** With RideWithGPS in foreground showing a live ride, dump produces readable labeled values for distance, elapsed time, current speed, elevation, and route name.
+**Exit criteria:** With a target app in the foreground showing real data, the dump produces readable labeled values that a human could reason about — labels paired with their values, structure preserved.
 
 ## Phase 3 — Query-to-answer pipeline
 
@@ -210,16 +210,17 @@ Goal: handle apps where AccessibilityService returns empty or garbage — Flutte
 
 ## Phase 6 — Multi-persona field test
 
-Goal: validate beyond cycling.
+Goal: validate across distinct accessibility personas in realistic environments.
 
-- Cycling on a real ride (Pixel 7 in jersey pocket, naked phone). Test at multiple speeds (slow, ~15 mph, ~25 mph) to characterize wind noise impact.
 - Cooking with wet/dirty hands — counter-mounted phone at kitchen distance.
 - Driving — phone in cradle, road noise present.
+- Walking outdoors — phone in pocket, ambient noise, wind.
 - Motor-impairment scenario — phone stationary, user activates by voice only.
+- Low-vision scenario — TalkBack already in use, ensure Readout layers cleanly.
 - Tune wake-word sensitivity, mic gain, TTS volume for each context.
 - Measure battery drain over a 2-hour session vs. baseline.
 
-**Exit criteria:** At least three distinct personas successfully complete representative tasks without touching the phone (cycling, cooking) or using only the tap path (motor impairment). Document failure modes.
+**Exit criteria:** At least three distinct personas successfully complete representative tasks without touching the phone (e.g. cooking, walking) or using only the tap path (motor impairment, situational hands-busy). Document failure modes.
 
 ## Phase 7 — Polish & Play Store submission
 
@@ -240,7 +241,7 @@ Goal: ship.
 | Phase | Effort | Notes |
 |---|---|---|
 | 1 | 1–2 weekends | Multi-module + Hilt scaffolding + interface stubs + audio loop + Play-Store scaffolding |
-| 2 | 1 weekend | AccessibilityService implementation + RideWithGPS validation |
+| 2 | 1 weekend | AccessibilityService implementation + validation against a few representative target apps |
 | LLM spike (Pixel 7) | 1 weekend | Benchmark MediaPipe + llama.cpp on small models. Parallel to Phase 2 if time permits. |
 | 3 | 1-2 weekends | LlmClient implementations: cloud Gemini Flash + (on borrowed flagship) AICore Gemini Nano |
 | 4 | 1 weekend | Porcupine wake-word + tap-to-talk activators |
@@ -257,7 +258,7 @@ Realistic timeline to Play Store submission: add another **4–6 weekends** for 
 2. **AccessibilityService restrictions.** Google has been tightening these. Accessibility-first framing and clear use-case documentation are the mitigation; Play Store policy review will be the real test.
 3. **Wake-word reliability on a naked phone in a pocket.** Wind noise above 20 mph + muffled audio path is the worst case. Tap-to-talk is the always-available mitigation.
 4. **Battery cost of continuous wake-word listening.** Porcupine is light but not free. Quantify in Phase 6.
-5. **RideWithGPS UI churn.** If they redesign the active-ride screen, AccessibilityService output may shift. LLM prompt is schema-flexible by design (free-form node list, not a fixed schema).
+5. **Third-party app UI churn.** Any target app can redesign its screens and break our AccessibilityService output. LLM prompt is schema-flexible by design (free-form node list, not a fixed schema) so it degrades gracefully rather than catastrophically.
 6. **Cloud LLM data handling (if chosen).** Need explicit user disclosure, opt-in, and ideally a "private mode" that disables cloud calls.
 
 ## Stretch goals (post-prototype)

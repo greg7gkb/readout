@@ -4,7 +4,7 @@
 
 A user-initiated Android app that listens for natural-language voice queries about what's currently on screen, then answers via TTS. Hands-free via wake word; tap-to-talk as an equal-standing alternative.
 
-**Framing:** accessibility tool first (motor impairment, low vision, situational disability — hands occupied while cooking, driving, cycling, holding a child). The cycling / RideWithGPS angle is a personal use case, not the primary mission.
+**Framing:** accessibility tool first. Motor impairment, low vision, and situational disability (hands occupied while cooking, driving, walking, holding a child) are the design center.
 
 ## Status
 
