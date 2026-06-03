@@ -89,11 +89,11 @@ class SessionOrchestrator @Inject constructor(
             Log.i(TAG, "[${session.id}] transcript=${transcript.text}")
 
             _state.value = SessionState.Thinking(session, transcript.text)
-            val snapshot = screenReader.snapshot()
+            val inspection = screenReader.inspect()
             val answer = llmClient.answer(
                 question = transcript.text,
-                screen = snapshot,
-                appName = snapshot.foregroundPackage,
+                screen = inspection,
+                appName = inspection.foregroundPackage,
             )
             Log.i(TAG, "[${session.id}] answer=${answer.text} latencyMs=${answer.latencyMillis}")
 

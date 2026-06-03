@@ -1,10 +1,11 @@
 package com.greg7gkb.readout.common.model
 
 /**
- * Structured representation of what's currently on screen, produced by a [ScreenReader].
- * Designed to serialize cleanly for transport to an LLM — keep fields JSON-friendly.
+ * The structured result of a screen-reader inspection — labeled text and
+ * descriptions visible on the foreground app at a moment in time. Designed
+ * to serialize cleanly for transport to an LLM — keep fields JSON-friendly.
  */
-data class ScreenSnapshot(
+data class ScreenInspection(
     val foregroundPackage: String,
     val timestampMillis: Long,
     val nodes: List<ScreenNode>,

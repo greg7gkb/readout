@@ -1,7 +1,7 @@
 package com.greg7gkb.readout.llm
 
 import com.greg7gkb.readout.common.model.Answer
-import com.greg7gkb.readout.common.model.ScreenSnapshot
+import com.greg7gkb.readout.common.model.ScreenInspection
 import javax.inject.Inject
 
 /**
@@ -11,7 +11,7 @@ import javax.inject.Inject
 class EchoClient @Inject constructor() : LlmClient {
     override suspend fun answer(
         question: String,
-        screen: ScreenSnapshot,
+        screen: ScreenInspection,
         appName: String,
     ): Answer {
         val start = System.currentTimeMillis()

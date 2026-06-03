@@ -1,7 +1,7 @@
 package com.greg7gkb.readout.llm
 
 import com.greg7gkb.readout.common.model.Answer
-import com.greg7gkb.readout.common.model.ScreenSnapshot
+import com.greg7gkb.readout.common.model.ScreenInspection
 
 /**
  * Answers a user question grounded in the current screen.
@@ -17,7 +17,7 @@ import com.greg7gkb.readout.common.model.ScreenSnapshot
 interface LlmClient {
     suspend fun answer(
         question: String,
-        screen: ScreenSnapshot,
+        screen: ScreenInspection,
         appName: String,
     ): Answer
 }

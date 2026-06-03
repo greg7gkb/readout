@@ -1,6 +1,6 @@
 package com.greg7gkb.readout.screen
 
-import com.greg7gkb.readout.common.model.ScreenSnapshot
+import com.greg7gkb.readout.common.model.ScreenInspection
 
 /**
  * Captures structured text from the currently foregrounded app.
@@ -11,5 +11,5 @@ import com.greg7gkb.readout.common.model.ScreenSnapshot
  *  - MediaProjectionScreenReader — screenshot + OCR fallback (Phase 5)
  */
 interface ScreenReader {
-    suspend fun snapshot(): ScreenSnapshot
+    suspend fun inspect(): ScreenInspection
 }

@@ -2,11 +2,11 @@ package com.greg7gkb.readout.screen
 
 import com.greg7gkb.readout.common.model.Bounds
 import com.greg7gkb.readout.common.model.ScreenNode
-import com.greg7gkb.readout.common.model.ScreenSnapshot
+import com.greg7gkb.readout.common.model.ScreenInspection
 import javax.inject.Inject
 
 /**
- * Returns a hardcoded snapshot resembling a generic weather-app screen.
+ * Returns a hardcoded inspection resembling a generic weather-app screen.
  * Lets the rest of the pipeline (LLM, TTS, session orchestrator) be exercised
  * before the real AccessibilityService implementation lands in Phase 2.
  *
@@ -16,7 +16,7 @@ import javax.inject.Inject
  * committing the product to any particular third-party app.
  */
 class FakeScreenReader @Inject constructor() : ScreenReader {
-    override suspend fun snapshot(): ScreenSnapshot = ScreenSnapshot(
+    override suspend fun inspect(): ScreenInspection = ScreenInspection(
         foregroundPackage = "com.example.weather",
         timestampMillis = System.currentTimeMillis(),
         nodes = listOf(
