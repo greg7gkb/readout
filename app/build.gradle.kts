@@ -75,6 +75,7 @@ dependencies {
     implementation(project(":core:audio"))
     implementation(project(":core:llm"))
     implementation(project(":core:screen"))
+    implementation(project(":core:wake"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
