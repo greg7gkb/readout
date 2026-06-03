@@ -13,7 +13,7 @@ lifecycle = "2.8.7"
 compose-bom = "2024.12.01"
 
 # DI
-hilt = "2.52"
+hilt = "2.54"
 hilt-navigation-compose = "1.2.0"
 
 # Coroutines
