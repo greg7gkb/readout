@@ -10,6 +10,7 @@ import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.wake.Activator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,14 +39,45 @@ class SessionOrchestrator @Inject constructor(
     private val _state = MutableStateFlow<SessionState>(SessionState.Idle)
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
+    private val _isRunning = MutableStateFlow(false)
+    /**
+     * True between a successful [start] and the corresponding scope-completion.
+     * Drives UI affordances ("Start session" vs "Stop session") so they reflect
+     * actual orchestrator liveness even when the service was torn down via the
+     * notification action rather than the activity button.
+     */
+    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+    private var collectionJob: Job? = null
+
     /**
      * Begin orchestrating in [scope]. Each Activation from the configured
-     * [Activator] runs the full pipeline once. Cancel [scope] to stop.
+     * [Activator] runs the full pipeline once. Idempotent — repeat calls
+     * return the existing job rather than spawning duplicate collectors.
+     * Cancel [scope] or call [stop] to end.
      */
-    fun start(scope: CoroutineScope): Job = scope.launch {
-        activator.activations().collect { activation ->
-            runPipeline(activation)
+    fun start(scope: CoroutineScope): Job {
+        collectionJob?.takeIf { it.isActive }?.let { return it }
+        val job = scope.launch {
+            activator.activations().collect { activation ->
+                runPipeline(activation)
+            }
         }
+        collectionJob = job
+        _isRunning.value = true
+        job.invokeOnCompletion {
+            // Fires whether stop() was called or [scope] was cancelled out from
+            // under us (service destroyed). Reset everything visible to the UI.
+            _isRunning.value = false
+            _state.value = SessionState.Idle
+        }
+        return job
+    }
+
+    /** Cancel the active collector if any. Safe to call when not started. */
+    fun stop() {
+        collectionJob?.cancel()
+        collectionJob = null
     }
 
     private suspend fun runPipeline(activation: Activation) {

@@ -1,7 +1,6 @@
 package com.greg7gkb.readout
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -15,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,9 +28,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
 import com.greg7gkb.readout.onboarding.OnboardingPermissions
 import com.greg7gkb.readout.onboarding.OnboardingScreen
+import com.greg7gkb.readout.service.ReadoutService
 import com.greg7gkb.readout.session.SessionOrchestrator
 import com.greg7gkb.readout.session.SessionState
 import com.greg7gkb.readout.settings.SettingsScreen
@@ -43,6 +43,11 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    /**
+     * Injected so the UI can observe live state from the same orchestrator
+     * the [ReadoutService] is driving. The activity never calls
+     * [SessionOrchestrator.start] — that's the service's job.
+     */
     @Inject
     lateinit var orchestrator: SessionOrchestrator
 
@@ -51,9 +56,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "starting orchestrator in activity scope (foreground service takes over in Step 11)")
-        orchestrator.start(lifecycleScope)
-
         setContent {
             ReadoutTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -77,6 +79,9 @@ class MainActivity : ComponentActivity() {
                         else -> ReadoutHome(
                             padding = padding,
                             state = orchestrator.state,
+                            running = orchestrator.isRunning,
+                            onStartClick = { ReadoutService.start(context) },
+                            onStopClick = { ReadoutService.stop(context) },
                             onTriggerClick = { manualActivator.trigger() },
                             onSettingsClick = { showSettings = true },
                         )
@@ -85,20 +90,20 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
-    private companion object {
-        const val TAG = "Readout"
-    }
 }
 
 @Composable
 private fun ReadoutHome(
     padding: PaddingValues,
     state: StateFlow<SessionState>,
+    running: StateFlow<Boolean>,
+    onStartClick: () -> Unit,
+    onStopClick: () -> Unit,
     onTriggerClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
     val current by state.collectAsState()
+    val isRunning by running.collectAsState()
     Box(modifier = Modifier.fillMaxSize().padding(padding)) {
         TextButton(
             onClick = onSettingsClick,
@@ -115,8 +120,18 @@ private fun ReadoutHome(
             Spacer(modifier = Modifier.height(24.dp))
             Text(text = current.describe(), style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(24.dp))
-            Button(onClick = onTriggerClick) {
-                Text("Trigger activation")
+            if (isRunning) {
+                Button(onClick = onTriggerClick) {
+                    Text("Trigger activation")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onStopClick) {
+                    Text("Stop session")
+                }
+            } else {
+                Button(onClick = onStartClick) {
+                    Text("Start session")
+                }
             }
         }
     }
