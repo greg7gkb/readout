@@ -18,10 +18,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import com.greg7gkb.readout.onboarding.OnboardingPermissions
+import com.greg7gkb.readout.onboarding.OnboardingScreen
 import com.greg7gkb.readout.session.SessionOrchestrator
 import com.greg7gkb.readout.session.SessionState
 import com.greg7gkb.readout.ui.theme.ReadoutTheme
@@ -47,11 +53,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             ReadoutTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                    ReadoutHome(
-                        padding = padding,
-                        state = orchestrator.state,
-                        onTriggerClick = { manualActivator.trigger() },
-                    )
+                    val context = LocalContext.current
+                    var onboarded by remember {
+                        mutableStateOf(OnboardingPermissions.allGranted(context))
+                    }
+                    if (!onboarded) {
+                        OnboardingScreen(
+                            padding = padding,
+                            onComplete = { onboarded = true },
+                        )
+                    } else {
+                        ReadoutHome(
+                            padding = padding,
+                            state = orchestrator.state,
+                            onTriggerClick = { manualActivator.trigger() },
+                        )
+                    }
                 }
             }
         }
