@@ -172,6 +172,19 @@ Goal: extract structured text from the foreground app on demand.
 
 **Exit criteria:** With a target app in the foreground showing real data, the dump produces readable labeled values that a human could reason about — labels paired with their values, structure preserved.
 
+### Phase 2 sub-steps
+
+Per-step rhythm: write code → build → deploy → validate (logcat/screenshot) → commit with substantive `why` → pause.
+
+1. **Manifest + accessibility-service config.** Declare an empty `ReadoutAccessibilityService` in `:app` manifest with `BIND_ACCESSIBILITY_SERVICE` permission and an `accessibility_service_config.xml` (event types: `typeWindowContentChanged | typeWindowStateChanged`, no package filter). Validate on emulator: service appears in Settings → Accessibility and can be enabled.
+2. **Onboarding step for accessibility permission.** Extend `:feature:onboarding` to detect whether `ReadoutAccessibilityService` is enabled (`AccessibilityManager.getEnabledAccessibilityServiceList`) and deep-link to Accessibility Settings if not. Validate: fresh install walks user through enabling it; existing-enabled state is detected and skipped.
+3. **Pure node-tree walker.** In `:core:screen`, a pure function `walk(AccessibilityNodeInfo): List<ScreenNode>` collecting `text`, `contentDescription`, `bounds`, `className`, `viewIdResourceName`. No Android service coupling. Unit-testable. Validate via unit test on a mock node tree.
+4. **`AccessibilityScreenReader` impl.** Real `ScreenReader` impl that holds a reference to the latest root node via a `@Singleton` holder updated by the service in `onAccessibilityEvent`. **Snapshot timing: on-demand walk** — `snapshot()` walks the current root synchronously (freshest data, no stale cache; the per-event walk-and-cache alternative was rejected as too costly on screens that update constantly).
+5. **Wire into Hilt.** Swap `FakeScreenReader` → `AccessibilityScreenReader` in `app/.../di/ScreenModule`. End-to-end: tap → speak → real screen dump → `EchoClient` echoes (or stub-summarizes) what's on screen. Validate via logcat: snapshot contains expected nodes from the foreground app.
+6. **Target-app validation pass.** Run against four TalkBack-clean candidates: weather (Pixel Weather or AccuWeather), transit (Google Maps transit or Citymapper), recipe (NYT Cooking or Paprika), reader (Pocket or Kindle). Capture dumps, eyeball "could a human reason about this?". Pick the official Phase 3 target app.
+
+**Exit criteria (Phase 2):** Same as above — readable labeled values from at least one target app — plus a documented "this app is the Phase 3 target and here's a sample dump" artifact in the repo.
+
 ## Phase 3 — Query-to-answer pipeline
 
 Goal: ask a question, get the right answer spoken back.

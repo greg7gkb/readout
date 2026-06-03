@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Readout</string>
+    <string name="accessibility_service_label">Readout</string>
+    <string name="accessibility_service_summary">Reads on-screen content so Readout can answer your spoken questions about it.</string>
+    <string name="accessibility_service_description">Readout uses accessibility access only to read the text currently visible on your screen, on demand, when you ask a question. Screen content is sent to the configured language model to generate a spoken answer. Readout does not log, store, or transmit screen content for any other purpose.</string>
 </resources>
