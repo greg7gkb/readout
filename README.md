@@ -47,6 +47,39 @@ adb shell am start -n com.greg7gkb.readout.dev/com.greg7gkb.readout.MainActivity
 
 Walk through onboarding to grant microphone + notification permissions, tap **Start session**, then **Trigger activation** and speak a short phrase. With the `dev` flavor's `EchoClient` LLM, the response is the reversed transcript spoken back through the device speaker.
 
+## Debug
+
+The app exposes an ADB-driven debug surface for poking at internals without going through the speech pipeline. Useful while iterating on the screen reader, and for capturing dumps of target apps when designing the Phase 3 LLM prompt.
+
+### Inspect the foreground app
+
+Walks the currently-foregrounded app's accessibility tree and logs the result. The Readout accessibility service must be enabled (post-onboarding) and the dev flavor must be installed.
+
+```bash
+adb shell am broadcast \
+  -a com.greg7gkb.readout.action.DEBUG_COMMAND \
+  --es cmd inspect \
+  -p com.greg7gkb.readout.dev
+```
+
+As a shell alias (drop into `~/.zshrc` or `~/.bashrc`):
+
+```bash
+alias readout-inspect='adb shell am broadcast -a com.greg7gkb.readout.action.DEBUG_COMMAND --es cmd inspect -p com.greg7gkb.readout.dev'
+```
+
+Watch the result on a second terminal:
+
+```bash
+adb logcat -s Readout/Debug:V Readout/Screen:V
+```
+
+The same inspection is wired to the **Inspect** action on the session notification, which dismisses the shade first so it captures the underlying app rather than SystemUI.
+
+### Adding new debug commands
+
+See `app/src/main/kotlin/com/greg7gkb/readout/debug/DebugCommandDispatcher.kt`. Commands live in a `Map<String, DebugCommand>` — adding one is a single map entry. Invoke with `--es cmd <name>`; future commands can read additional extras off the originating intent.
+
 ## Tech stack
 
 Kotlin 2.1 · Android Gradle Plugin 8.7 · Compose Material 3 · Hilt 2.54 · Coroutines · `minSdk 31` / `targetSdk 35`
