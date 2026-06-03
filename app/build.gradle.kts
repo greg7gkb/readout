@@ -72,6 +72,7 @@ android {
 
 dependencies {
     implementation(project(":core:common"))
+    implementation(project(":core:audio"))
     implementation(project(":core:llm"))
     implementation(project(":core:screen"))
 

@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.greg7gkb.readout.audio.SpeechRecognizer
+import com.greg7gkb.readout.audio.TtsEngine
 import com.greg7gkb.readout.common.di.IoDispatcher
 import com.greg7gkb.readout.common.model.Session
 import com.greg7gkb.readout.llm.LlmClient
@@ -37,10 +39,22 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var screenReader: ScreenReader
 
+    @Inject
+    lateinit var speechRecognizer: SpeechRecognizer
+
+    @Inject
+    lateinit var ttsEngine: TtsEngine
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val session = Session()
-        Log.i(TAG, "session=${session.id} llm=${llmClient.javaClass.simpleName} screen=${screenReader.javaClass.simpleName}")
+        Log.i(
+            TAG,
+            "session=${session.id} llm=${llmClient.javaClass.simpleName} " +
+                "screen=${screenReader.javaClass.simpleName} " +
+                "stt=${speechRecognizer.javaClass.simpleName} " +
+                "tts=${ttsEngine.javaClass.simpleName}",
+        )
         lifecycleScope.launch {
             val snapshot = screenReader.snapshot()
             Log.i(TAG, "snapshot pkg=${snapshot.foregroundPackage} nodes=${snapshot.nodes.size}")
@@ -50,6 +64,10 @@ class MainActivity : ComponentActivity() {
                 appName = snapshot.foregroundPackage,
             )
             Log.i(TAG, "answer=${answer.text} latencyMs=${answer.latencyMillis}")
+            val ttsStart = System.currentTimeMillis()
+            runCatching { ttsEngine.speak("Readout initialized") }
+                .onSuccess { Log.i(TAG, "tts.speak ok latencyMs=${System.currentTimeMillis() - ttsStart}") }
+                .onFailure { Log.w(TAG, "tts.speak failed: ${it.message}") }
         }
         setContent {
             ReadoutTheme {
