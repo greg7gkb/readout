@@ -1,9 +1,11 @@
 package com.greg7gkb.readout.screen
 
+import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import com.greg7gkb.readout.common.di.IoDispatcher
 import com.greg7gkb.readout.common.model.ScreenInspection
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,7 +32,19 @@ class AccessibilityScreenReader @Inject constructor(
             Log.w(TAG, "inspect requested but accessibility service is not bound")
             return@withContext empty()
         }
-        val root = service.rootInActiveWindow
+
+        var root = service.rootInActiveWindow
+        if (root?.packageName == SYSTEM_UI_PACKAGE) {
+            // Notification shade or quick settings is the focused window
+            // (e.g. user triggered inspect via the notification action).
+            // Dismiss and re-read so we capture the underlying foreground
+            // app instead of the shade's own view tree.
+            Log.i(TAG, "active window is $SYSTEM_UI_PACKAGE; dismissing shade and retrying")
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            delay(SHADE_DISMISS_DELAY_MS)
+            root = service.rootInActiveWindow
+        }
+
         if (root == null) {
             Log.w(TAG, "inspect requested but rootInActiveWindow is null")
             return@withContext empty()
@@ -53,5 +67,7 @@ class AccessibilityScreenReader @Inject constructor(
 
     companion object {
         private const val TAG = "Readout/Screen"
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private const val SHADE_DISMISS_DELAY_MS = 300L
     }
 }
