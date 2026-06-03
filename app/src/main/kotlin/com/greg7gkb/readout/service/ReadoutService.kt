@@ -16,6 +16,8 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.greg7gkb.readout.MainActivity
 import com.greg7gkb.readout.R
+import com.greg7gkb.readout.debug.DebugCommandDispatcher
+import com.greg7gkb.readout.debug.DebugCommandReceiver
 import com.greg7gkb.readout.session.SessionOrchestrator
 import com.greg7gkb.readout.session.SessionState
 import com.greg7gkb.readout.session.summary
@@ -105,6 +107,14 @@ class ReadoutService : LifecycleService() {
             Intent(this, ReadoutService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        val inspectIntent = PendingIntent.getBroadcast(
+            this,
+            REQ_INSPECT,
+            Intent(DebugCommandReceiver.ACTION)
+                .setPackage(packageName)
+                .putExtra(DebugCommandDispatcher.EXTRA_CMD, DebugCommandDispatcher.CMD_INSPECT),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Readout")
@@ -114,6 +124,7 @@ class ReadoutService : LifecycleService() {
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .addAction(0, "Stop", stopIntent)
+            .addAction(0, "Inspect", inspectIntent)
             .build()
     }
 
@@ -139,6 +150,7 @@ class ReadoutService : LifecycleService() {
 
         private const val REQ_OPEN = 100
         private const val REQ_STOP = 101
+        private const val REQ_INSPECT = 102
         private const val TAG = "Readout/Service"
 
         fun start(context: Context) {

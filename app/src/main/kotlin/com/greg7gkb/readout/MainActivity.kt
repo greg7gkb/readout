@@ -28,10 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.rememberCoroutineScope
 import com.greg7gkb.readout.onboarding.OnboardingPermissions
 import com.greg7gkb.readout.onboarding.OnboardingScreen
-import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.service.ReadoutService
 import com.greg7gkb.readout.session.SessionOrchestrator
 import com.greg7gkb.readout.session.SessionState
@@ -40,7 +38,6 @@ import com.greg7gkb.readout.ui.theme.ReadoutTheme
 import com.greg7gkb.readout.wake.ManualActivator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -57,27 +54,16 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var manualActivator: ManualActivator
 
-    /**
-     * Used by the debug "Inspect screen" button. Lets us validate the
-     * AccessibilityScreenReader without going through STT (which is
-     * broken on emulator). Useful permanently as a fast manual check
-     * during target-app validation in Step 6.
-     */
-    @Inject
-    lateinit var screenReader: ScreenReader
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             ReadoutTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val context = LocalContext.current
-                    val scope = rememberCoroutineScope()
                     var onboarded by remember {
                         mutableStateOf(OnboardingPermissions.allGranted(context))
                     }
                     var showSettings by remember { mutableStateOf(false) }
-                    var lastInspection by remember { mutableStateOf<String?>(null) }
 
                     when {
                         !onboarded -> OnboardingScreen(
@@ -94,17 +80,9 @@ class MainActivity : ComponentActivity() {
                             padding = padding,
                             state = orchestrator.state,
                             running = orchestrator.isRunning,
-                            lastInspection = lastInspection,
                             onStartClick = { ReadoutService.start(context) },
                             onStopClick = { ReadoutService.stop(context) },
                             onTriggerClick = { manualActivator.trigger() },
-                            onInspectClick = {
-                                scope.launch {
-                                    val inspection = screenReader.inspect()
-                                    lastInspection =
-                                        "pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size}"
-                                }
-                            },
                             onSettingsClick = { showSettings = true },
                         )
                     }
@@ -119,11 +97,9 @@ private fun ReadoutHome(
     padding: PaddingValues,
     state: StateFlow<SessionState>,
     running: StateFlow<Boolean>,
-    lastInspection: String?,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit,
     onTriggerClick: () -> Unit,
-    onInspectClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
     val current by state.collectAsState()
@@ -156,17 +132,6 @@ private fun ReadoutHome(
                 Button(onClick = onStartClick) {
                     Text("Start session")
                 }
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            OutlinedButton(onClick = onInspectClick) {
-                Text("Inspect screen (debug)")
-            }
-            if (lastInspection != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = lastInspection,
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
     }

@@ -29,6 +29,14 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <receiver
+            android:name=".debug.DebugCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.greg7gkb.readout.action.DEBUG_COMMAND" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name="com.greg7gkb.readout.screen.ReadoutAccessibilityService"
             android:exported="false"
