@@ -78,6 +78,7 @@ dependencies {
     implementation(project(":core:session"))
     implementation(project(":core:wake"))
     implementation(project(":feature:onboarding"))
+    implementation(project(":feature:settings"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
