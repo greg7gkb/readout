@@ -14,6 +14,7 @@ data class ScreenNode(
     val text: String? = null,
     val contentDescription: String? = null,
     val className: String? = null,
+    val viewIdResourceName: String? = null,
     val bounds: Bounds? = null,
 )
 
