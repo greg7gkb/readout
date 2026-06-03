@@ -10,6 +10,10 @@ A user-initiated Android app that listens for natural-language voice queries abo
 
 **Phase 1 — Foundations: complete.** A multi-module Hilt-wired skeleton with stub implementations (`EchoClient` LLM, `FakeScreenReader`, no-op wake-word) and real Android implementations of speech recognition and TTS, all driven by a `SessionOrchestrator` running inside a `FOREGROUND_SERVICE_MICROPHONE` foreground service. Validated end-to-end on a Pixel 7 — tap → speak → hear the echoed phrase spoken back.
 
+**Phase 2 — Screen reading via AccessibilityService: complete.** Real `AccessibilityScreenReader` (`:core:screen`) walks the foreground window's view tree on demand via a pure, unit-tested `NodeWalker`. Onboarding deep-links the user into Accessibility Settings as a focused step. A debug-command dispatcher exposes `inspect` via both ADB broadcast and a session-notification action, so target-app screens can be dumped without going through the speech pipeline. Phase 3 target (Android Settings) selected with rationale in [`docs/phase3_target.md`](docs/phase3_target.md).
+
+Next up: **Phase 3 — Query-to-answer pipeline.**
+
 See [`docs/plan.md`](docs/plan.md) for the full project plan, phase breakdown, and effort estimates.
 
 ## Architecture
@@ -20,7 +24,7 @@ Multi-module Gradle, interface-driven, Hilt DI. Every external dependency lives 
 :app                           Application + DI wiring + foreground service + flavors
 :core:common                   Shared models, coroutine dispatchers
 :core:audio                    SpeechRecognizer + TtsEngine (Android impls)
-:core:screen                   ScreenReader (FakeScreenReader; AccessibilityService impl in Phase 2)
+:core:screen                   ScreenReader (AccessibilityScreenReader; FakeScreenReader retained as a reference impl)
 :core:llm                      LlmClient (EchoClient; cloud + AICore impls in Phase 3)
 :core:wake                     WakeWordEngine + Activator (Porcupine in Phase 4)
 :core:session                  Pipeline orchestrator — depends only on interfaces

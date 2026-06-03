@@ -127,7 +127,7 @@ Output of this spike: a recommendation to either (a) commit to on-device for v1,
 
 ---
 
-## Phase 1 — Foundations
+## Phase 1 — Foundations ✅ complete
 
 Goal: prove the audio loop works end-to-end **and** establish the swap-friendly module + interface skeleton so every future phase plugs in cleanly.
 
@@ -160,7 +160,7 @@ Goal: prove the audio loop works end-to-end **and** establish the swap-friendly 
 - All major interfaces have at least one stub implementation; swapping `EchoClient` for a different `LlmClient` in `:app` DI module is a one-line change.
 - Manifest, permissions, and consent flow ready for Play Store policy review even if not yet submitted.
 
-## Phase 2 — Screen reading via AccessibilityService
+## Phase 2 — Screen reading via AccessibilityService ✅ complete
 
 Goal: extract structured text from the foreground app on demand.
 
@@ -184,6 +184,8 @@ Per-step rhythm: write code → build → deploy → validate (logcat/screenshot
 6. **Target-app validation pass.** Run against four TalkBack-clean candidates: weather (Pixel Weather or AccuWeather), transit (Google Maps transit or Citymapper), recipe (NYT Cooking or Paprika), reader (Pocket or Kindle). Capture dumps, eyeball "could a human reason about this?". Pick the official Phase 3 target app.
 
 **Exit criteria (Phase 2):** Same as above — readable labeled values from at least one target app — plus a documented "this app is the Phase 3 target and here's a sample dump" artifact in the repo.
+
+**Outcome.** All six sub-steps shipped. `AccessibilityScreenReader` (`:core:screen`) walks the live foreground window via an on-demand `NodeWalker` (8 unit tests). Onboarding deep-links into Accessibility Settings as its own focused step. A `DebugCommandDispatcher` exposes `inspect` via ADB broadcast and a session-notification action; the reader auto-dismisses the notification shade if it's the active window so the dump captures the underlying app. Snapshot type renamed to `ScreenInspection`/`inspect()` for clarity. Phase 3 target selected: **Android Settings** — full rationale, candidate comparison, and a sample dump live in [`phase3_target.md`](phase3_target.md). Three categories from the original plan (weather, recipe, reader) deferred to Phase 3 secondary validation because the apps weren't available on the Cinnamon Bun emulator.
 
 ## Phase 3 — Query-to-answer pipeline
 
