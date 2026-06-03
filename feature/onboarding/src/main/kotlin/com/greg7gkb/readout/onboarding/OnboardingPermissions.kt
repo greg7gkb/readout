@@ -5,25 +5,41 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.greg7gkb.readout.screen.AccessibilityServiceStatus
 
 /**
- * The runtime permissions Readout needs before it can do useful work.
- * Accessibility-service binding and screen-capture consent are handled
- * by different system flows and live elsewhere.
+ * Things Readout needs from the user before it can do useful work.
+ *
+ * Modeled as a sealed class because two kinds of grants are in play and
+ * they take different flows: runtime permissions go through the system
+ * permission dialog; the accessibility service has to be enabled via
+ * Settings deep-link. MediaProjection consent (Phase 5) and wake-word
+ * mic-keepalive consent (Phase 4) will slot in here too.
  */
+sealed class OnboardingRequirement {
+    data class RuntimePermission(val name: String) : OnboardingRequirement()
+    data object AccessibilityService : OnboardingRequirement()
+}
+
 object OnboardingPermissions {
 
-    val required: List<String>
+    private val runtime: List<OnboardingRequirement.RuntimePermission>
         get() = buildList {
-            add(Manifest.permission.RECORD_AUDIO)
+            add(OnboardingRequirement.RuntimePermission(Manifest.permission.RECORD_AUDIO))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
+                add(OnboardingRequirement.RuntimePermission(Manifest.permission.POST_NOTIFICATIONS))
             }
         }
 
     fun allGranted(context: Context): Boolean = missing(context).isEmpty()
 
-    fun missing(context: Context): List<String> = required.filter { perm ->
-        ContextCompat.checkSelfPermission(context, perm) != PackageManager.PERMISSION_GRANTED
+    fun missing(context: Context): List<OnboardingRequirement> = buildList {
+        addAll(runtime.filter { !it.isGranted(context) })
+        if (!AccessibilityServiceStatus.isEnabled(context)) {
+            add(OnboardingRequirement.AccessibilityService)
+        }
     }
+
+    private fun OnboardingRequirement.RuntimePermission.isGranted(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, name) == PackageManager.PERMISSION_GRANTED
 }
