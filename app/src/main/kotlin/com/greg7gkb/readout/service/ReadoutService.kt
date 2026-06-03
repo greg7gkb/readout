@@ -117,6 +117,7 @@ class ReadoutService : LifecycleService() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
+            .setCategory(Notification.CATEGORY_SERVICE)
             .setContentTitle("Readout")
             .setContentText(state.summary())
             .setContentIntent(contentIntent)
@@ -135,16 +136,22 @@ class ReadoutService : LifecycleService() {
                 NotificationChannel(
                     CHANNEL_ID,
                     "Readout session",
-                    NotificationManager.IMPORTANCE_LOW,
+                    NotificationManager.IMPORTANCE_DEFAULT,
                 ).apply {
                     description = "Shown while Readout is actively listening for a wake word or query."
+                    setSound(null, null)
+                    enableVibration(false)
                 },
             )
         }
     }
 
     companion object {
-        const val CHANNEL_ID = "readout-session"
+        // Bumped from "readout-session" because changing an existing
+        // channel's importance has no effect on devices that already
+        // created it under the old ID. A new ID gets every install a
+        // fresh DEFAULT-importance channel.
+        const val CHANNEL_ID = "readout-session-v2"
         const val NOTIFICATION_ID = 1
         const val ACTION_STOP = "com.greg7gkb.readout.action.STOP"
 
