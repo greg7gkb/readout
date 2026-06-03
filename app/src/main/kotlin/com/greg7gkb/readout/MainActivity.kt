@@ -16,93 +16,45 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
-import com.greg7gkb.readout.audio.SpeechRecognizer
-import com.greg7gkb.readout.audio.TtsEngine
-import com.greg7gkb.readout.common.di.IoDispatcher
-import com.greg7gkb.readout.common.model.Session
-import com.greg7gkb.readout.llm.LlmClient
-import com.greg7gkb.readout.screen.ScreenReader
+import com.greg7gkb.readout.session.SessionOrchestrator
+import com.greg7gkb.readout.session.SessionState
 import com.greg7gkb.readout.ui.theme.ReadoutTheme
-import com.greg7gkb.readout.wake.Activator
 import com.greg7gkb.readout.wake.ManualActivator
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    @Inject @IoDispatcher
-    lateinit var ioDispatcher: CoroutineDispatcher
-
     @Inject
-    lateinit var llmClient: LlmClient
-
-    @Inject
-    lateinit var screenReader: ScreenReader
-
-    @Inject
-    lateinit var speechRecognizer: SpeechRecognizer
-
-    @Inject
-    lateinit var ttsEngine: TtsEngine
-
-    @Inject
-    lateinit var activator: Activator
+    lateinit var orchestrator: SessionOrchestrator
 
     @Inject
     lateinit var manualActivator: ManualActivator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val session = Session()
-        Log.i(
-            TAG,
-            "session=${session.id} llm=${llmClient.javaClass.simpleName} " +
-                "screen=${screenReader.javaClass.simpleName} " +
-                "stt=${speechRecognizer.javaClass.simpleName} " +
-                "tts=${ttsEngine.javaClass.simpleName} " +
-                "activator=${activator.javaClass.simpleName}",
-        )
-
-        // Collect activations and run the pipeline on each one.
-        lifecycleScope.launch {
-            activator.activations().collect { activation ->
-                Log.i(TAG, "activation=$activation")
-                runPipelineOnce()
-            }
-        }
+        Log.i(TAG, "starting orchestrator in activity scope (foreground service takes over in Step 11)")
+        orchestrator.start(lifecycleScope)
 
         setContent {
             ReadoutTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     ReadoutHome(
                         padding = padding,
+                        state = orchestrator.state,
                         onTriggerClick = { manualActivator.trigger() },
                     )
                 }
             }
         }
-    }
-
-    private suspend fun runPipelineOnce() {
-        val snapshot = screenReader.snapshot()
-        Log.i(TAG, "snapshot pkg=${snapshot.foregroundPackage} nodes=${snapshot.nodes.size}")
-        val answer = llmClient.answer(
-            question = "How far have I ridden?",
-            screen = snapshot,
-            appName = snapshot.foregroundPackage,
-        )
-        Log.i(TAG, "answer=${answer.text} latencyMs=${answer.latencyMillis}")
-        val ttsStart = System.currentTimeMillis()
-        runCatching { ttsEngine.speak("Readout initialized") }
-            .onSuccess { Log.i(TAG, "tts.speak ok latencyMs=${System.currentTimeMillis() - ttsStart}") }
-            .onFailure { Log.w(TAG, "tts.speak failed: ${it.message}") }
     }
 
     private companion object {
@@ -113,8 +65,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ReadoutHome(
     padding: PaddingValues,
+    state: StateFlow<SessionState>,
     onTriggerClick: () -> Unit,
 ) {
+    val current by state.collectAsState()
     Column(
         modifier = Modifier.fillMaxSize().padding(padding),
         verticalArrangement = Arrangement.Center,
@@ -122,8 +76,18 @@ private fun ReadoutHome(
     ) {
         Text(text = "Readout", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
+        Text(text = current.describe(), style = MaterialTheme.typography.bodyLarge)
+        Spacer(modifier = Modifier.height(24.dp))
         Button(onClick = onTriggerClick) {
             Text("Trigger activation")
         }
     }
+}
+
+private fun SessionState.describe(): String = when (this) {
+    SessionState.Idle -> "Idle"
+    is SessionState.Listening -> "Listening…"
+    is SessionState.Thinking -> "Thinking about: $question"
+    is SessionState.Speaking -> "Speaking: $answer"
+    is SessionState.Error -> "Error: $message"
 }
