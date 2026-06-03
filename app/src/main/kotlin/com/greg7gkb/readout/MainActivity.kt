@@ -14,11 +14,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import com.greg7gkb.readout.common.di.IoDispatcher
+import com.greg7gkb.readout.common.model.ScreenSnapshot
 import com.greg7gkb.readout.common.model.Session
+import com.greg7gkb.readout.llm.LlmClient
 import com.greg7gkb.readout.ui.theme.ReadoutTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -27,10 +31,25 @@ class MainActivity : ComponentActivity() {
     @Inject @IoDispatcher
     lateinit var ioDispatcher: CoroutineDispatcher
 
+    @Inject
+    lateinit var llmClient: LlmClient
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val session = Session()
-        Log.i(TAG, "session=${session.id} ioDispatcher=$ioDispatcher")
+        Log.i(TAG, "session=${session.id} ioDispatcher=$ioDispatcher llm=${llmClient.javaClass.simpleName}")
+        lifecycleScope.launch {
+            val answer = llmClient.answer(
+                question = "How far have I ridden?",
+                screen = ScreenSnapshot(
+                    foregroundPackage = "stub",
+                    timestampMillis = System.currentTimeMillis(),
+                    nodes = emptyList(),
+                ),
+                appName = "stub",
+            )
+            Log.i(TAG, "answer=${answer.text} latencyMs=${answer.latencyMillis}")
+        }
         setContent {
             ReadoutTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
