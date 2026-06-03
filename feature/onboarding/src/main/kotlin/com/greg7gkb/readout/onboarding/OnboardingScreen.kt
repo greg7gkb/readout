@@ -1,6 +1,7 @@
 package com.greg7gkb.readout.onboarding
 
 import android.Manifest
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +16,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -33,13 +33,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.greg7gkb.readout.screen.AccessibilityServiceStatus
 
 /**
- * Welcome + grants screen. Renders one card per missing requirement.
- * Runtime permissions share a single bottom "Grant permissions" button
- * that fires the multi-permission system dialog; the accessibility
- * service gets its own per-card button that deep-links to Settings.
+ * Stepped onboarding flow. The accessibility-service grant comes first
+ * because without screen reading nothing else Readout does is useful;
+ * runtime permissions (microphone, notifications) come second and share
+ * a single system-prompt dialog.
  *
- * Re-checks requirement state on lifecycle resume so users granting via
- * Settings get advanced automatically without app restart.
+ * Re-checks requirement state on lifecycle resume so the user toggling
+ * a setting and returning advances the flow without a manual refresh.
  */
 @Composable
 fun OnboardingScreen(
@@ -48,6 +48,13 @@ fun OnboardingScreen(
 ) {
     val context = LocalContext.current
     var missing by remember { mutableStateOf(OnboardingPermissions.missing(context)) }
+
+    // Captured once so RuntimePermissionsStep knows whether it's the
+    // user's first screen (greet) or a follow-up after Screen Reading
+    // (acknowledge the prior step).
+    val accessibilityInitiallyMissing = remember {
+        missing.any { it is OnboardingRequirement.AccessibilityService }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -68,8 +75,116 @@ fun OnboardingScreen(
         if (missing.isEmpty()) onComplete()
     }
 
+    val needsScreenReading = missing.any { it is OnboardingRequirement.AccessibilityService }
     val runtimeMissing = missing.filterIsInstance<OnboardingRequirement.RuntimePermission>()
 
+    when {
+        needsScreenReading -> ScreenReadingStep(padding, context)
+        runtimeMissing.isNotEmpty() -> RuntimePermissionsStep(
+            padding = padding,
+            missing = runtimeMissing,
+            isFollowUp = accessibilityInitiallyMissing,
+            onGrant = {
+                permissionLauncher.launch(runtimeMissing.map { it.name }.toTypedArray())
+            },
+        )
+    }
+}
+
+@Composable
+private fun ScreenReadingStep(padding: PaddingValues, context: Context) {
+    OnboardingStepColumn(padding) {
+        Text(
+            text = "Welcome to Readout",
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Ask Readout about whatever's on your screen — it'll listen, look, and speak the answer back.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Screen reading", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "To read what's on your screen when you ask a question. Screen " +
+                        "content is read on demand only and sent to the configured language " +
+                        "model. It is not logged, stored, or transmitted for any other purpose.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "In the next screen: Downloaded apps → Readout → toggle on.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(onClick = { context.startActivity(AccessibilityServiceStatus.settingsIntent()) }) {
+            Text(text = "Open Accessibility Settings")
+        }
+    }
+}
+
+@Composable
+private fun RuntimePermissionsStep(
+    padding: PaddingValues,
+    missing: List<OnboardingRequirement.RuntimePermission>,
+    isFollowUp: Boolean,
+    onGrant: () -> Unit,
+) {
+    OnboardingStepColumn(padding) {
+        Text(
+            text = if (isFollowUp) "Almost there" else "Welcome to Readout",
+            style = MaterialTheme.typography.headlineMedium,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = if (isFollowUp) {
+                val noun = if (missing.size == 1) "permission" else "permissions"
+                "${missing.size} more $noun and Readout is ready."
+            } else {
+                "Ask Readout about whatever's on your screen — it'll listen, look, and speak the answer back."
+            },
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        missing.forEach { perm ->
+            RuntimePermissionCard(perm)
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(onClick = onGrant) {
+            Text(text = "Grant permissions")
+        }
+    }
+}
+
+@Composable
+private fun RuntimePermissionCard(permission: OnboardingRequirement.RuntimePermission) {
+    val (title, reason) = describe(permission)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = reason, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun OnboardingStepColumn(
+    padding: PaddingValues,
+    content: @Composable () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -78,65 +193,12 @@ fun OnboardingScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = "Welcome to Readout",
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = "Ask Readout about whatever's on your screen — it'll listen, look, and speak the answer back.",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-
-        missing.forEach { req ->
-            RequirementCard(req)
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        if (runtimeMissing.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = {
-                    permissionLauncher.launch(runtimeMissing.map { it.name }.toTypedArray())
-                },
-            ) {
-                Text(text = "Grant permissions")
-            }
-        }
+        content()
     }
 }
 
-@Composable
-private fun RequirementCard(requirement: OnboardingRequirement) {
-    val context = LocalContext.current
-    val (title, reason) = describe(requirement)
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = reason, style = MaterialTheme.typography.bodyMedium)
-            if (requirement is OnboardingRequirement.AccessibilityService) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "In the next screen: Downloaded apps → Readout → toggle on.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                TextButton(
-                    onClick = { context.startActivity(AccessibilityServiceStatus.settingsIntent()) },
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text(text = "Open Accessibility Settings")
-                }
-            }
-        }
-    }
-}
-
-private fun describe(requirement: OnboardingRequirement): Pair<String, String> = when (requirement) {
-    is OnboardingRequirement.RuntimePermission -> when (requirement.name) {
+private fun describe(permission: OnboardingRequirement.RuntimePermission): Pair<String, String> =
+    when (permission.name) {
         Manifest.permission.RECORD_AUDIO ->
             "Microphone" to
                 "To hear the wake word and your spoken questions. Audio is processed " +
@@ -145,11 +207,5 @@ private fun describe(requirement: OnboardingRequirement): Pair<String, String> =
             "Notifications" to
                 "To show a persistent status while Readout is listening, so the " +
                 "microphone is never active without a visible indicator."
-        else -> requirement.name to "Required for app functionality."
+        else -> permission.name to "Required for app functionality."
     }
-    OnboardingRequirement.AccessibilityService ->
-        "Screen reading" to
-            "To read what's on your screen when you ask a question. Screen content " +
-            "is read on demand only and sent to the configured language model. It is " +
-            "not logged, stored, or transmitted for any other purpose."
-}
