@@ -219,9 +219,22 @@ Per-step rhythm: write code → build → deploy → validate (logcat/screenshot
 
 6. **Query-variants validation pass.** Define ≥10 variants in `docs/phase3_queries.md` covering: direct factual ("what version of Android"), yes/no ("is Wi-Fi on?"), comparative ("which is higher, brightness or volume?"), phrasing diversity ("tell me about" / "what's my" / "show me"), multi-part, ambiguous reference, and **out-of-screen** ("what's the weather?" — model should say it doesn't know). Run each against Android Settings; capture transcript, answer, latency. Iterate on the system prompt where it fails. Document final pass rate.
 
-7. **(Conditional) AICore on-device path on flagship.** If the borrowed Pixel 10 Pro has arrived: implement `AICoreClient` (`:core:llm`) against AICore / Gemini Nano APIs reusing the step-2 `PromptBuilder`. Wire under `app/src/onDevice/.../di/LlmModule.kt`, run the same step-6 query suite on-device, compare latency / quality / battery vs. cloud. If the device hasn't arrived, defer this step into a Phase 3.5 ticket and ship without it.
+7. **(Deferred to Phase 3.5) AICore on-device path on flagship.** Originally planned to implement `AICoreClient` (`:core:llm`) against AICore / Gemini Nano APIs reusing the step-2 `PromptBuilder`, wire under `app/src/onDevice/.../di/LlmModule.kt`, run the same step-6 query suite on-device, and compare latency / quality / battery vs. cloud. **Deferred** because the borrowed Pixel 10 Pro is not yet available; the `onDevice` flavor still binds `EchoClient` as a placeholder. See Phase 3.5 below.
 
-**Exit criteria (Phase 3):** Original criteria above hold against Android Settings — spoken answers matching on-screen values within ~3 seconds, validated across the 10-variant suite. At minimum the `cloud` flavor is end-to-end with the real LLM. The `onDevice` flavor is either complete (step 7 done) or explicitly deferred with a Phase 3.5 ticket and the reason recorded.
+**Exit criteria (Phase 3):** Met. Spoken answers matching on-screen values within ~3 seconds, validated across the 13-variant suite (≥ planned 10), against Android Settings → About phone. Final pass rate 13/13 documented in [`phase3_queries.md`](phase3_queries.md). The `cloud` flavor is end-to-end with Claude Haiku 4.5 (Gemini Flash also wired and runtime-selectable via `CloudLlmConfig`). The `onDevice` flavor is explicitly deferred to Phase 3.5 — see below for the reason.
+
+## Phase 3.5 — AICore on-device path (deferred from Phase 3 Step 7)
+
+**Deferred because:** the borrowed Pixel 10 Pro hasn't arrived yet. Step 7 requires Tensor G3+ hardware to run Gemini Nano via AICore; the Pixel 7 dev device can't host it. Rather than block Phase 4 (wake word + tap-to-talk) on hardware availability, Step 7's scope moves into its own phase to be picked up when the device lands.
+
+When the Pixel 10 Pro is available, this phase's work:
+
+- Implement `AICoreClient` in `:core:llm` against AICore / Gemini Nano APIs, reusing the existing `PromptBuilder` + `LlmClient` interface.
+- Swap `app/src/onDevice/.../di/LlmModule.kt` to bind `AICoreClient` instead of the current `EchoClient` placeholder.
+- Re-run the Step 6 query suite on-device against Android Settings; compare latency / quality / battery vs. the `cloud` flavor's Claude Haiku results in [`phase3_queries.md`](phase3_queries.md).
+- Decision output: commit to on-device for v1, ship cloud-first with on-device as an optional toggle, or hybrid (on-device default + cloud fallback for hard queries) — same shape as the LLM-investigation spike output the original plan described.
+
+Exit criteria: same as Phase 3 Step 6 (13/13 query suite on Android Settings, ≤ 3s end-to-end), but on the on-device backend and on the flagship device.
 
 ## Phase 4 — Activation: wake word + tap-to-talk
 

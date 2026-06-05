@@ -12,7 +12,11 @@ A user-initiated Android app that listens for natural-language voice queries abo
 
 **Phase 2 — Screen reading via AccessibilityService: complete.** Real `AccessibilityScreenReader` (`:core:screen`) walks the foreground window's view tree on demand via a pure, unit-tested `NodeWalker`. Onboarding deep-links the user into Accessibility Settings as a focused step. A debug-command dispatcher exposes `inspect` (and `ask`) via ADB broadcast, so target-app screens can be dumped without going through the speech pipeline. Phase 3 target (Android Settings) selected with rationale in [`docs/phase3_target.md`](docs/phase3_target.md).
 
-Next up: **Phase 3 — Query-to-answer pipeline.**
+**Phase 3 — Query-to-answer pipeline: complete.** Tap → speak → real screen dump → cloud LLM → spoken answer, end-to-end. `CloudLlmClient` (`:core:llm`) routes to either Claude Haiku 4.5 or Gemini 2.5 Flash via a runtime-selectable `CloudLlmConfig` — keys are read from `local.properties` into `BuildConfig`, never committed. Per-flavor `LlmModule` bindings (`dev` → Echo, `cloud` → CloudLlmClient, `onDevice` → Echo as a placeholder). Screen-reader Unavailable state fails closed at both the orchestrator and the `ask` debug command — deterministic spoken message, no LLM call, no token spend; a Compose banner surfaces the same state to the home screen. Per-session stage-level latency summary line under `Readout/Session`. Final query-variants validation pass: 13/13 against Android Settings → About phone, all under the 3-second per-call budget — see [`docs/phase3_queries.md`](docs/phase3_queries.md).
+
+**Deferred to Phase 3.5:** the AICore / Gemini Nano on-device path. Requires the borrowed Pixel 10 Pro to evaluate; the `onDevice` flavor builds today but binds `EchoClient` as a placeholder.
+
+Next up: **Phase 4 — Activation (wake word + tap-to-talk).**
 
 See [`docs/plan.md`](docs/plan.md) for the full project plan, phase breakdown, and effort estimates.
 
