@@ -4,6 +4,7 @@ import android.content.Intent
 import android.util.Log
 import com.greg7gkb.readout.audio.TtsEngine
 import com.greg7gkb.readout.llm.LlmClient
+import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,13 +39,19 @@ class DebugCommandDispatcher @Inject constructor(
 
     private val commands: Map<String, DebugCommand> = mapOf(
         CMD_INSPECT to DebugCommand { _ ->
-            val inspection = screenReader.inspect()
-            Log.i(
-                TAG,
-                "inspect pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size}",
-            )
-            inspection.nodes.forEachIndexed { i, node ->
-                Log.i(TAG, "  [$i] text=${node.text} desc=${node.contentDescription} cls=${node.className}")
+            when (val result = screenReader.inspect()) {
+                is ScreenReadResult.Available -> {
+                    val inspection = result.inspection
+                    Log.i(
+                        TAG,
+                        "inspect pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size}",
+                    )
+                    inspection.nodes.forEachIndexed { i, node ->
+                        Log.i(TAG, "  [$i] text=${node.text} desc=${node.contentDescription} cls=${node.className}")
+                    }
+                }
+                is ScreenReadResult.Unavailable ->
+                    Log.w(TAG, "inspect unavailable reason=${result.reason}")
             }
         },
         // `ask` bypasses STT for emulator validation and for Step 6's
@@ -66,7 +73,18 @@ class DebugCommandDispatcher @Inject constructor(
             }
             val speak = intent.getBooleanExtra(EXTRA_SPEAK, true)
             val start = System.currentTimeMillis()
-            val inspection = screenReader.inspect()
+            val inspection = when (val result = screenReader.inspect()) {
+                is ScreenReadResult.Available -> result.inspection
+                is ScreenReadResult.Unavailable -> {
+                    // Match the orchestrator's fail-closed behavior: spoken
+                    // deterministic message, no LLM call, no tokens spent on
+                    // an empty screen.
+                    val msg = unavailableMessage(result.reason)
+                    Log.w(TAG, "ask unavailable reason=${result.reason} q=\"$question\"")
+                    if (speak) ttsEngine.speak(msg)
+                    return@DebugCommand
+                }
+            }
             val inspectMs = System.currentTimeMillis() - start
             Log.i(TAG, "ask q=\"$question\" pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size} inspectMs=$inspectMs")
             val answer = llmClient.answer(
@@ -78,6 +96,13 @@ class DebugCommandDispatcher @Inject constructor(
             if (speak) ttsEngine.speak(answer.text)
         },
     )
+
+    private fun unavailableMessage(reason: ScreenReadResult.Unavailable.Reason): String = when (reason) {
+        ScreenReadResult.Unavailable.Reason.SERVICE_NOT_BOUND ->
+            "I can't read the screen right now. Please re-enable accessibility access for Readout in Settings."
+        ScreenReadResult.Unavailable.Reason.ROOT_NOT_AVAILABLE ->
+            "I can't see the screen right now. Try again in a moment."
+    }
 
     fun dispatch(cmd: String?, intent: Intent) {
         if (cmd == null) {

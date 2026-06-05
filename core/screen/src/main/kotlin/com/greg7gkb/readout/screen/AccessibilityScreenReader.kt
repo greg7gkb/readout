@@ -6,7 +6,13 @@ import android.util.Log
 import com.greg7gkb.readout.common.di.IoDispatcher
 import com.greg7gkb.readout.common.model.ScreenInspection
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,12 +20,12 @@ import javax.inject.Singleton
 /**
  * Real [ScreenReader] backed by the live [ReadoutAccessibilityService].
  * Each call to [inspect] grabs the current active-window root from the
- * system, walks it via [NodeWalker], and returns the result.
+ * system, walks it via [NodeWalker], and returns a [ScreenReadResult].
  *
- * If the service hasn't been bound yet (user hasn't enabled it in
- * Accessibility Settings, or the system just unbound it), returns an
- * empty inspection rather than throwing — the LLM downstream can recognize
- * the empty case and answer "I can't see your screen right now."
+ * Returns [ScreenReadResult.Unavailable] rather than an empty inspection
+ * when the service isn't bound or the active root is unreadable, so the
+ * orchestrator can fail closed (spoken error, no LLM call) instead of
+ * relying on the model to recognize an empty node list.
  */
 @Singleton
 class AccessibilityScreenReader @Inject constructor(
@@ -27,11 +33,21 @@ class AccessibilityScreenReader @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : ScreenReader {
 
-    override suspend fun inspect(): ScreenInspection = withContext(io) {
-        val service = holder.service
+    // SupervisorJob keeps this collector alive for the process lifetime —
+    // there's no Activity scope to tie it to, and the holder's state is
+    // process-wide. Eagerly started so first UI read reflects current state.
+    private val availabilityScope = CoroutineScope(SupervisorJob() + io)
+    override val availability: StateFlow<Boolean> = holder.service
+        .map { it != null }
+        .stateIn(availabilityScope, SharingStarted.Eagerly, holder.service.value != null)
+
+    override suspend fun inspect(): ScreenReadResult = withContext(io) {
+        val service = holder.service.value
         if (service == null) {
-            Log.w(TAG, "inspect requested but accessibility service is not bound")
-            return@withContext empty()
+            Log.w(TAG, "inspect: service not bound")
+            return@withContext ScreenReadResult.Unavailable(
+                ScreenReadResult.Unavailable.Reason.SERVICE_NOT_BOUND,
+            )
         }
 
         var root = service.rootInActiveWindow
@@ -47,18 +63,22 @@ class AccessibilityScreenReader @Inject constructor(
         }
 
         if (root == null) {
-            Log.w(TAG, "inspect requested but rootInActiveWindow is null")
-            return@withContext empty()
+            Log.w(TAG, "inspect: rootInActiveWindow is null")
+            return@withContext ScreenReadResult.Unavailable(
+                ScreenReadResult.Unavailable.Reason.ROOT_NOT_AVAILABLE,
+            )
         }
         val nodes = NodeWalker.walk(root)
         val pkg = root.packageName?.toString().orEmpty()
         val label = resolveAppLabel(service, pkg)
         Log.i(TAG, "inspection pkg=$pkg label=$label nodes=${nodes.size}")
-        ScreenInspection(
-            foregroundPackage = pkg,
-            timestampMillis = System.currentTimeMillis(),
-            nodes = nodes,
-            foregroundAppLabel = label,
+        ScreenReadResult.Available(
+            ScreenInspection(
+                foregroundPackage = pkg,
+                timestampMillis = System.currentTimeMillis(),
+                nodes = nodes,
+                foregroundAppLabel = label,
+            ),
         )
     }
 
@@ -71,12 +91,6 @@ class AccessibilityScreenReader @Inject constructor(
             null
         }
     }
-
-    private fun empty(): ScreenInspection = ScreenInspection(
-        foregroundPackage = "",
-        timestampMillis = System.currentTimeMillis(),
-        nodes = emptyList(),
-    )
 
     companion object {
         private const val TAG = "Readout/Screen"

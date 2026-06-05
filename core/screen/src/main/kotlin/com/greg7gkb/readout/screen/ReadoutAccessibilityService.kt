@@ -20,7 +20,7 @@ class ReadoutAccessibilityService : AccessibilityService() {
     lateinit var holder: ReadoutAccessibilityServiceHolder
 
     override fun onServiceConnected() {
-        holder.service = this
+        holder.bind(this)
         Log.i(TAG, "service connected")
     }
 
@@ -34,9 +34,7 @@ class ReadoutAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        if (holder.service === this) {
-            holder.service = null
-        }
+        holder.unbind(this)
         Log.i(TAG, "service unbound")
         return super.onUnbind(intent)
     }

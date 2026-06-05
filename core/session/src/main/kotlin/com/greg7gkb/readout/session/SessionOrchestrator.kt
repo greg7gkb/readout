@@ -6,6 +6,7 @@ import com.greg7gkb.readout.audio.TtsEngine
 import com.greg7gkb.readout.common.model.Activation
 import com.greg7gkb.readout.common.model.Session
 import com.greg7gkb.readout.llm.LlmClient
+import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.wake.Activator
 import kotlinx.coroutines.CoroutineScope
@@ -89,7 +90,21 @@ class SessionOrchestrator @Inject constructor(
             Log.i(TAG, "[${session.id}] transcript=${transcript.text}")
 
             _state.value = SessionState.Thinking(session, transcript.text)
-            val inspection = screenReader.inspect()
+            val inspection = when (val result = screenReader.inspect()) {
+                is ScreenReadResult.Available -> result.inspection
+                is ScreenReadResult.Unavailable -> {
+                    // Fail closed: speak a deterministic message and skip the LLM
+                    // call. Letting the model improvise on an empty screen wastes
+                    // tokens and risks a confident wrong answer.
+                    val msg = unavailableMessage(result.reason)
+                    Log.w(TAG, "[${session.id}] screen unavailable reason=${result.reason}")
+                    _state.value = SessionState.Speaking(session, msg)
+                    ttsEngine.speak(msg)
+                    _state.value = SessionState.Idle
+                    Log.i(TAG, "[${session.id}] complete (screen unavailable)")
+                    return
+                }
+            }
             val answer = llmClient.answer(
                 question = transcript.text,
                 screen = inspection,
@@ -107,6 +122,13 @@ class SessionOrchestrator @Inject constructor(
             Log.w(TAG, "[${session.id}] failed: $msg")
             _state.value = SessionState.Error(session, msg)
         }
+    }
+
+    private fun unavailableMessage(reason: ScreenReadResult.Unavailable.Reason): String = when (reason) {
+        ScreenReadResult.Unavailable.Reason.SERVICE_NOT_BOUND ->
+            "I can't read the screen right now. Please re-enable accessibility access for Readout in Settings."
+        ScreenReadResult.Unavailable.Reason.ROOT_NOT_AVAILABLE ->
+            "I can't see the screen right now. Try again in a moment."
     }
 
     private companion object {
