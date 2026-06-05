@@ -18,18 +18,32 @@ data class Prompt(
 )
 
 /**
- * Phase 3 system prompt — pinned from `docs/plan.md` so any change to product
- * behavior is a visible diff in this file rather than an undocumented drift
- * inside a per-client implementation.
+ * Phase 3 system prompt. Pinned here so any product-behavior change shows up
+ * as a diff in this file rather than drifting inside a per-client impl.
  *
- * Word-for-word from the plan; future iteration during Step 6 validation will
- * land here.
+ * History: Pass 1 of the Step 6 validation (`docs/phase3_queries.md`) ran the
+ * plan's original "concisely and naturally" wording. 11/13 passed; both
+ * failures (out-of-screen refusals + ambiguous-reference handling) were
+ * verbosity — Claude described the screen as consolation when refusing, or
+ * enumerated candidates as a list, padding answers past the spoken-output
+ * budget. Iterations:
+ *
+ *   1. "Answer in one short sentence" — a stricter brevity bar than "concise".
+ *   2. Refusal contract: one sentence, don't describe what IS on screen.
+ *   3. Banned the conversational preamble ("I see that…", "The screen
+ *      shown is…") since it's pure TTS-noise in a hands-busy context.
+ *   4. Kept the speakable-units guidance — Pass 1 proved it works (uptime
+ *      "2:58:20" got naturalized to "2 hours, 58 minutes, and 20 seconds").
  */
 const val SYSTEM_PROMPT: String =
-    "You answer questions about content currently on the user's Android screen. " +
-        "Given the structured screen text, answer the user's question concisely and " +
-        "naturally for spoken output. Use units and phrasing a person would say aloud, " +
-        "not abbreviations."
+    "You answer questions about what is currently on the user's Android screen. " +
+        "Your response will be spoken aloud, so brevity is mandatory: answer in " +
+        "one short sentence whenever possible. " +
+        "If the answer isn't on screen, say so in one sentence and stop — don't " +
+        "describe what IS on screen as consolation. " +
+        "Don't preamble with phrases like \"I can see\" or \"The screen shows\". " +
+        "Use phrasing a person would say aloud — spell out units, naturalize " +
+        "raw values like \"2:58:20\" into \"2 hours, 58 minutes, 20 seconds\"."
 
 /**
  * Assembles a [Prompt] for a single voice query.

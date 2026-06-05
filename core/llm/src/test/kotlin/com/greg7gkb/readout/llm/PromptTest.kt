@@ -29,10 +29,14 @@ class PromptTest {
         )
 
         assertEquals(
-            "You answer questions about content currently on the user's Android screen. " +
-                "Given the structured screen text, answer the user's question concisely and " +
-                "naturally for spoken output. Use units and phrasing a person would say aloud, " +
-                "not abbreviations.",
+            "You answer questions about what is currently on the user's Android screen. " +
+                "Your response will be spoken aloud, so brevity is mandatory: answer in " +
+                "one short sentence whenever possible. " +
+                "If the answer isn't on screen, say so in one sentence and stop — don't " +
+                "describe what IS on screen as consolation. " +
+                "Don't preamble with phrases like \"I can see\" or \"The screen shows\". " +
+                "Use phrasing a person would say aloud — spell out units, naturalize " +
+                "raw values like \"2:58:20\" into \"2 hours, 58 minutes, 20 seconds\".",
             prompt.systemPrompt,
         )
 
