@@ -5,6 +5,7 @@
 .idea/
 *.iml
 .vscode/
+.claude/settings.local.json
 
 # Android / Gradle (pre-emptive — codebase not yet scaffolded)
 *.apk
