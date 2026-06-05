@@ -199,7 +199,29 @@ Goal: ask a question, get the right answer spoken back.
 - Pipe response to TTS.
 - Log latency at each stage (recognition, accessibility snapshot, LLM, TTS).
 
-**Exit criteria:** "How far have I ridden?" → spoken answer matching the on-screen distance value, within ~3 seconds end-to-end. Try at least 10 query variants to see how robust the LLM is to phrasing.
+**Exit criteria:** "How far have I ridden?" → spoken answer matching the on-screen distance value, within ~3 seconds end-to-end. Try at least 10 query variants to see how robust the LLM is to phrasing. (The Phase 3 target is **Android Settings** per [`phase3_target.md`](phase3_target.md), so the actual exit queries are Settings-shaped — e.g. "what version of Android am I running?", "is Wi-Fi on?", "what's my device name?" — but the latency budget and 10-variant breadth stand.)
+
+### Phase 3 sub-steps
+
+Per-step rhythm: write code → build → deploy → validate (logcat/screenshot) → commit with substantive `why` → pause.
+
+**Prerequisite:** The [LLM investigation spike](#llm-investigation-pre-phase-3-spike) must conclude on at least one path (cloud or on-device) before step 3. Steps 1–2 are pure code and don't depend on it.
+
+1. **Prompt format for `ScreenInspection`.** Pure function — likely an extension `ScreenInspection.toPromptText()` in `:core:llm` — that serializes the node list into a compact, LLM-readable form: labels paired with values, hierarchy hinted at via indentation or grouping, trimmed to a token budget. Pick the format (line-based vs. minimal JSON vs. markdown headings) by eyeballing the saved Android Settings dump and asking "which form lets a model find the version string fastest?". Also: surface a friendly app label (e.g. "Settings") alongside the package name — `PackageManager.getApplicationLabel` — since the orchestrator currently passes only the package. Unit-testable on fixture dumps.
+
+2. **System + user prompt assembly.** A `PromptBuilder` (or similar) in `:core:llm` that combines the Phase 3 system prompt, the user's transcript, the formatted screen text from step 1, and the app label into the full request payload — modelled abstractly so cloud + AICore both consume the same builder output. Unit test against a golden example pinned in the test fixtures.
+
+3. **First real `LlmClient` impl.** Whichever path the spike selects — most likely `CloudGeminiFlashClient` or `CloudClaudeHaikuClient` first. Network call, JSON response, basic retry on transient error, surface latency in the returned `Answer`. API key read from `local.properties` via `BuildConfig` (gitignored — never committed). Add `INTERNET` to the manifest. Unit test the request/response parsing against a recorded payload; one smoke test makes a real call.
+
+4. **Move `LlmModule` into per-flavor sources.** Delete `app/src/main/.../di/LlmModule.kt`. Add `app/src/dev/.../di/LlmModule.kt` (still binds `EchoClient` — `dev` stays stub for offline iteration), `app/src/cloud/.../di/LlmModule.kt` (binds the step-3 client), and `app/src/onDevice/.../di/LlmModule.kt` (binds `EchoClient` for now — replaced in step 7). Validate that all three `:app:assemble<Flavor>Debug` builds still pass. End-to-end on `cloud`: open Android Settings, ask "what version of Android am I running?", hear the answer.
+
+5. **Stage-level latency logging.** Stamp the orchestrator at each transition: activation → final transcript → `inspect` returned → LLM returned → TTS done. Emit one per-session summary line under `Readout/Session` (e.g. `[<id>] stt=420ms inspect=85ms llm=1840ms tts=910ms total=3255ms`) so the 3-second budget can be tracked from a single logcat tag. The existing `runPipeline` log lines already include the session ID — extend them, don't duplicate.
+
+6. **Query-variants validation pass.** Define ≥10 variants in `docs/phase3_queries.md` covering: direct factual ("what version of Android"), yes/no ("is Wi-Fi on?"), comparative ("which is higher, brightness or volume?"), phrasing diversity ("tell me about" / "what's my" / "show me"), multi-part, ambiguous reference, and **out-of-screen** ("what's the weather?" — model should say it doesn't know). Run each against Android Settings; capture transcript, answer, latency. Iterate on the system prompt where it fails. Document final pass rate.
+
+7. **(Conditional) AICore on-device path on flagship.** If the borrowed Pixel 10 Pro has arrived: implement `AICoreClient` (`:core:llm`) against AICore / Gemini Nano APIs reusing the step-2 `PromptBuilder`. Wire under `app/src/onDevice/.../di/LlmModule.kt`, run the same step-6 query suite on-device, compare latency / quality / battery vs. cloud. If the device hasn't arrived, defer this step into a Phase 3.5 ticket and ship without it.
+
+**Exit criteria (Phase 3):** Original criteria above hold against Android Settings — spoken answers matching on-screen values within ~3 seconds, validated across the 10-variant suite. At minimum the `cloud` flavor is end-to-end with the real LLM. The `onDevice` flavor is either complete (step 7 done) or explicitly deferred with a Phase 3.5 ticket and the reason recorded.
 
 ## Phase 4 — Activation: wake word + tap-to-talk
 
