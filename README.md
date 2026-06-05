@@ -117,19 +117,24 @@ The app exposes an ADB-driven debug surface for poking at internals without goin
 
 ### Inspect the foreground app
 
-Walks the currently-foregrounded app's accessibility tree and logs the result. The Readout accessibility service must be enabled (post-onboarding) and the dev flavor must be installed.
+Walks the currently-foregrounded app's accessibility tree and logs the result. Requires the Readout accessibility service to be enabled (post-onboarding) on whichever flavor you target.
+
+Replace the `-p` package with whichever flavor you have installed: `.dev` / `.cloud` / `.ondevice`. Targeting an uninstalled flavor is the most common reason this looks like it "did nothing" — `am broadcast` accepts the broadcast and exits 0 without telling you the target package doesn't exist; logcat stays silent because no receiver runs.
 
 ```bash
 adb shell am broadcast \
   -a com.greg7gkb.readout.action.DEBUG_COMMAND \
   --es cmd inspect \
-  -p com.greg7gkb.readout.dev
+  -p com.greg7gkb.readout.cloud
 ```
 
-As a shell alias (drop into `~/.zshrc` or `~/.bashrc`):
+As a shell alias (drop into `~/.zshrc` or `~/.bashrc`) — `READOUT_PKG` overrides the default, so you can switch flavors per session without re-aliasing:
 
 ```bash
-alias readout-inspect='adb shell am broadcast -a com.greg7gkb.readout.action.DEBUG_COMMAND --es cmd inspect -p com.greg7gkb.readout.dev'
+alias readout-inspect='adb shell am broadcast -a com.greg7gkb.readout.action.DEBUG_COMMAND --es cmd inspect -p ${READOUT_PKG:-com.greg7gkb.readout.cloud}'
+# usage:
+#   readout-inspect                                          # cloud (default)
+#   READOUT_PKG=com.greg7gkb.readout.dev readout-inspect     # dev
 ```
 
 Watch the result on a second terminal:
