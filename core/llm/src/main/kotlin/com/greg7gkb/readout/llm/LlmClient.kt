@@ -8,7 +8,7 @@ import com.greg7gkb.readout.common.model.ScreenInspection
  *
  * Implementations:
  *  - [EchoClient] — dev/test stub, no network or model call
- *  - CloudGeminiFlashClient — cloud flavor (later step)
+ *  - [CloudLlmClient] — cloud flavor; routes to Claude or Gemini at runtime
  *  - AICoreClient — onDevice flavor on AICore-capable devices (later step)
  *
  * The choice of which implementation is bound to this interface is made in
