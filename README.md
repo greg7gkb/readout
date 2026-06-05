@@ -140,6 +140,39 @@ adb logcat -s Readout/Debug:V Readout/Screen:V
 
 The same inspection is wired to the **Inspect** action on the session notification, which dismisses the shade first so it captures the underlying app rather than SystemUI.
 
+### Ask a question (bypass STT)
+
+Runs the same pipeline as a voice activation but skips the activation and STT steps — useful on emulator (where STT is broken) and for batch-running query variants without re-recording the transcript each time. Inspects the foreground app, calls the configured `LlmClient`, logs the answer, and (by default) speaks it via TTS.
+
+```bash
+adb shell "am broadcast \
+  -a com.greg7gkb.readout.action.DEBUG_COMMAND \
+  --es cmd ask --es q 'what version of Android am I running?' \
+  -p com.greg7gkb.readout.cloud"
+```
+
+Append `--ez speak false` to suppress TTS. Note the double quotes around the whole `am broadcast …` argument — `adb shell` joins args into one shell command on the device, so a question with spaces needs an outer quote (your shell) and an inner quote (the device shell). Without the outer quote, the question splits at the first space and `-p` ends up parsing as the package value (you'll see `pkg=version` in the broadcast confirmation, then nothing in logcat).
+
+If the accessibility service isn't currently bound to the process, the command fails closed: speaks a deterministic "I can't read the screen — please re-enable accessibility access" message and skips the LLM call entirely.
+
+### Exercise the screen-reader Unavailable path
+
+When validating the Layer 1 fail-closed behavior or the home-screen "Accessibility access is off" banner, you want to flip the screen reader to unavailable *without* force-stopping the app — force-stop puts the package in Android's stopped state, which clears settings on this emulator and routes back through onboarding rather than showing the banner.
+
+The surgical move is to delete the enabled-services setting. The system unbinds our service immediately; our `ReadoutAccessibilityServiceHolder` flips its `StateFlow<…?>` to null; `ScreenReader.availability` emits false; the Compose banner renders live without the app process restarting.
+
+```bash
+# Unbind (banner appears live; PID unchanged)
+adb shell settings delete secure enabled_accessibility_services
+
+# Restore — replace the suffix to match the installed flavor (.dev / .cloud / .ondevice)
+adb shell settings put secure enabled_accessibility_services \
+  com.greg7gkb.readout.cloud/com.greg7gkb.readout.screen.ReadoutAccessibilityService
+adb shell settings put secure accessibility_enabled 1
+```
+
+Don't try `settings put secure enabled_accessibility_services ""` — `adb settings` rejects empty-string values with `Bad arguments`. `delete` is the right verb.
+
 ### Adding new debug commands
 
 See `app/src/main/kotlin/com/greg7gkb/readout/debug/DebugCommandDispatcher.kt`. Commands live in a `Map<String, DebugCommand>` — adding one is a single map entry. Invoke with `--es cmd <name>`; future commands can read additional extras off the originating intent.
