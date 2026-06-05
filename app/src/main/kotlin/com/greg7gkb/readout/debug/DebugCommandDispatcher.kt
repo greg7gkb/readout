@@ -2,6 +2,8 @@ package com.greg7gkb.readout.debug
 
 import android.content.Intent
 import android.util.Log
+import com.greg7gkb.readout.audio.TtsEngine
+import com.greg7gkb.readout.llm.LlmClient
 import com.greg7gkb.readout.screen.ScreenReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,8 @@ import javax.inject.Singleton
 @Singleton
 class DebugCommandDispatcher @Inject constructor(
     private val screenReader: ScreenReader,
+    private val llmClient: LlmClient,
+    private val ttsEngine: TtsEngine,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -42,6 +46,36 @@ class DebugCommandDispatcher @Inject constructor(
             inspection.nodes.forEachIndexed { i, node ->
                 Log.i(TAG, "  [$i] text=${node.text} desc=${node.contentDescription} cls=${node.className}")
             }
+        },
+        // `ask` bypasses STT for emulator validation and for Step 6's
+        // query-variants pass (run the same question across providers without
+        // re-recording the transcript each time). Skips activation + STT;
+        // otherwise mirrors the orchestrator: inspect -> LlmClient -> TTS.
+        //
+        //   adb shell am broadcast \
+        //     -a com.greg7gkb.readout.action.DEBUG_COMMAND \
+        //     --es cmd ask --es q "what version of Android am I running?" \
+        //     -p com.greg7gkb.readout.cloud
+        //
+        // Add `--ez speak false` to skip TTS (useful for batch runs).
+        CMD_ASK to DebugCommand { intent ->
+            val question = intent.getStringExtra(EXTRA_QUESTION)
+            if (question.isNullOrBlank()) {
+                Log.w(TAG, "ask: missing --es $EXTRA_QUESTION extra")
+                return@DebugCommand
+            }
+            val speak = intent.getBooleanExtra(EXTRA_SPEAK, true)
+            val start = System.currentTimeMillis()
+            val inspection = screenReader.inspect()
+            val inspectMs = System.currentTimeMillis() - start
+            Log.i(TAG, "ask q=\"$question\" pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size} inspectMs=$inspectMs")
+            val answer = llmClient.answer(
+                question = question,
+                screen = inspection,
+                appName = inspection.foregroundPackage,
+            )
+            Log.i(TAG, "ask answer=\"${answer.text}\" llmMs=${answer.latencyMillis}")
+            if (speak) ttsEngine.speak(answer.text)
         },
     )
 
@@ -60,7 +94,10 @@ class DebugCommandDispatcher @Inject constructor(
 
     companion object {
         const val EXTRA_CMD = "cmd"
+        const val EXTRA_QUESTION = "q"
+        const val EXTRA_SPEAK = "speak"
         const val CMD_INSPECT = "inspect"
+        const val CMD_ASK = "ask"
         private const val TAG = "Readout/Debug"
     }
 }
