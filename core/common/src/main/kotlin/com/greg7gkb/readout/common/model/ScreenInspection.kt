@@ -9,6 +9,12 @@ data class ScreenInspection(
     val foregroundPackage: String,
     val timestampMillis: Long,
     val nodes: List<ScreenNode>,
+    /**
+     * Human-readable app label resolved via [android.content.pm.PackageManager.getApplicationLabel],
+     * e.g. "Settings" for `com.android.settings`. Null when the lookup failed (package not
+     * installed, query restrictions). Prompt builders should fall back to [foregroundPackage].
+     */
+    val foregroundAppLabel: String? = null,
 )
 
 data class ScreenNode(

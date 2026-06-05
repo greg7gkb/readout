@@ -1,6 +1,7 @@
 package com.greg7gkb.readout.screen
 
 import android.accessibilityservice.AccessibilityService
+import android.content.pm.PackageManager
 import android.util.Log
 import com.greg7gkb.readout.common.di.IoDispatcher
 import com.greg7gkb.readout.common.model.ScreenInspection
@@ -51,12 +52,24 @@ class AccessibilityScreenReader @Inject constructor(
         }
         val nodes = NodeWalker.walk(root)
         val pkg = root.packageName?.toString().orEmpty()
-        Log.i(TAG, "inspection pkg=$pkg nodes=${nodes.size}")
+        val label = resolveAppLabel(service, pkg)
+        Log.i(TAG, "inspection pkg=$pkg label=$label nodes=${nodes.size}")
         ScreenInspection(
             foregroundPackage = pkg,
             timestampMillis = System.currentTimeMillis(),
             nodes = nodes,
+            foregroundAppLabel = label,
         )
+    }
+
+    private fun resolveAppLabel(service: AccessibilityService, pkg: String): String? {
+        if (pkg.isBlank()) return null
+        return try {
+            val info = service.packageManager.getApplicationInfo(pkg, 0)
+            service.packageManager.getApplicationLabel(info).toString()
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
     }
 
     private fun empty(): ScreenInspection = ScreenInspection(

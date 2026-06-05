@@ -18,6 +18,7 @@ import javax.inject.Inject
 class FakeScreenReader @Inject constructor() : ScreenReader {
     override suspend fun inspect(): ScreenInspection = ScreenInspection(
         foregroundPackage = "com.example.weather",
+        foregroundAppLabel = "Weather",
         timestampMillis = System.currentTimeMillis(),
         nodes = listOf(
             ScreenNode(text = "San Francisco", className = "android.widget.TextView", bounds = Bounds(40, 200, 720, 280)),
