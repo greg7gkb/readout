@@ -72,28 +72,51 @@ class DebugCommandDispatcher @Inject constructor(
                 return@DebugCommand
             }
             val speak = intent.getBooleanExtra(EXTRA_SPEAK, true)
-            val start = System.currentTimeMillis()
+            val t0 = System.currentTimeMillis()
+            var inspectMs: Long? = null
+            var llmMs: Long? = null
+            var ttsMs: Long? = null
+            val inspectStart = System.currentTimeMillis()
             val inspection = when (val result = screenReader.inspect()) {
-                is ScreenReadResult.Available -> result.inspection
+                is ScreenReadResult.Available -> {
+                    inspectMs = System.currentTimeMillis() - inspectStart
+                    result.inspection
+                }
                 is ScreenReadResult.Unavailable -> {
+                    inspectMs = System.currentTimeMillis() - inspectStart
                     // Match the orchestrator's fail-closed behavior: spoken
                     // deterministic message, no LLM call, no tokens spent on
                     // an empty screen.
                     val msg = unavailableMessage(result.reason)
                     Log.w(TAG, "ask unavailable reason=${result.reason} q=\"$question\"")
-                    if (speak) ttsEngine.speak(msg)
+                    if (speak) {
+                        val ttsStart = System.currentTimeMillis()
+                        ttsEngine.speak(msg)
+                        ttsMs = System.currentTimeMillis() - ttsStart
+                    }
+                    Log.i(
+                        TAG,
+                        "ask summary " + formatSummary(t0, inspectMs, llmMs, ttsMs) +
+                            " reason=${result.reason}",
+                    )
                     return@DebugCommand
                 }
             }
-            val inspectMs = System.currentTimeMillis() - start
             Log.i(TAG, "ask q=\"$question\" pkg=${inspection.foregroundPackage} nodes=${inspection.nodes.size} inspectMs=$inspectMs")
+            val llmStart = System.currentTimeMillis()
             val answer = llmClient.answer(
                 question = question,
                 screen = inspection,
                 appName = inspection.foregroundPackage,
             )
-            Log.i(TAG, "ask answer=\"${answer.text}\" llmMs=${answer.latencyMillis}")
-            if (speak) ttsEngine.speak(answer.text)
+            llmMs = System.currentTimeMillis() - llmStart
+            Log.i(TAG, "ask answer=\"${answer.text}\" llmMs=$llmMs")
+            if (speak) {
+                val ttsStart = System.currentTimeMillis()
+                ttsEngine.speak(answer.text)
+                ttsMs = System.currentTimeMillis() - ttsStart
+            }
+            Log.i(TAG, "ask summary " + formatSummary(t0, inspectMs, llmMs, ttsMs))
         },
     )
 
@@ -102,6 +125,20 @@ class DebugCommandDispatcher @Inject constructor(
             "I can't read the screen right now. Please re-enable accessibility access for Readout in Settings."
         ScreenReadResult.Unavailable.Reason.ROOT_NOT_AVAILABLE ->
             "I can't see the screen right now. Try again in a moment."
+    }
+
+    /** Same shape as [SessionOrchestrator]'s summary minus the STT stage (ask
+     *  skips activation + STT). Stages that didn't run are omitted. */
+    private fun formatSummary(
+        t0: Long,
+        inspectMs: Long?,
+        llmMs: Long?,
+        ttsMs: Long?,
+    ): String = buildString {
+        inspectMs?.let { append("inspect=${it}ms ") }
+        llmMs?.let { append("llm=${it}ms ") }
+        ttsMs?.let { append("tts=${it}ms ") }
+        append("total=${System.currentTimeMillis() - t0}ms")
     }
 
     fun dispatch(cmd: String?, intent: Intent) {

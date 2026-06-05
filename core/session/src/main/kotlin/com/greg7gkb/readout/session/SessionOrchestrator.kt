@@ -84,42 +84,67 @@ class SessionOrchestrator @Inject constructor(
     private suspend fun runPipeline(activation: Activation) {
         val session = Session()
         Log.i(TAG, "[${session.id}] start via $activation")
+        val t0 = System.currentTimeMillis()
+        var sttMs: Long? = null
+        var inspectMs: Long? = null
+        var llmMs: Long? = null
+        var ttsMs: Long? = null
         try {
             _state.value = SessionState.Listening(session)
             val transcript = speechRecognizer.listen().first { it.isFinal }
+            sttMs = System.currentTimeMillis() - t0
             Log.i(TAG, "[${session.id}] transcript=${transcript.text}")
 
             _state.value = SessionState.Thinking(session, transcript.text)
+            val inspectStart = System.currentTimeMillis()
             val inspection = when (val result = screenReader.inspect()) {
-                is ScreenReadResult.Available -> result.inspection
+                is ScreenReadResult.Available -> {
+                    inspectMs = System.currentTimeMillis() - inspectStart
+                    result.inspection
+                }
                 is ScreenReadResult.Unavailable -> {
+                    inspectMs = System.currentTimeMillis() - inspectStart
                     // Fail closed: speak a deterministic message and skip the LLM
                     // call. Letting the model improvise on an empty screen wastes
                     // tokens and risks a confident wrong answer.
                     val msg = unavailableMessage(result.reason)
                     Log.w(TAG, "[${session.id}] screen unavailable reason=${result.reason}")
                     _state.value = SessionState.Speaking(session, msg)
+                    val ttsStart = System.currentTimeMillis()
                     ttsEngine.speak(msg)
+                    ttsMs = System.currentTimeMillis() - ttsStart
                     _state.value = SessionState.Idle
-                    Log.i(TAG, "[${session.id}] complete (screen unavailable)")
+                    Log.i(
+                        TAG,
+                        "[${session.id}] complete (screen unavailable) " +
+                            formatSummary(t0, sttMs, inspectMs, llmMs, ttsMs) +
+                            " reason=${result.reason}",
+                    )
                     return
                 }
             }
+            val llmStart = System.currentTimeMillis()
             val answer = llmClient.answer(
                 question = transcript.text,
                 screen = inspection,
                 appName = inspection.foregroundPackage,
             )
+            llmMs = System.currentTimeMillis() - llmStart
             Log.i(TAG, "[${session.id}] answer=${answer.text} latencyMs=${answer.latencyMillis}")
 
             _state.value = SessionState.Speaking(session, answer.text)
+            val ttsStart = System.currentTimeMillis()
             ttsEngine.speak(answer.text)
+            ttsMs = System.currentTimeMillis() - ttsStart
 
             _state.value = SessionState.Idle
-            Log.i(TAG, "[${session.id}] complete")
+            Log.i(TAG, "[${session.id}] complete " + formatSummary(t0, sttMs, inspectMs, llmMs, ttsMs))
         } catch (t: Throwable) {
             val msg = t.message ?: t.javaClass.simpleName
-            Log.w(TAG, "[${session.id}] failed: $msg")
+            // Include whatever stage timings completed before the failure — the
+            // partial summary tells you which stage was last to finish and
+            // therefore most likely where the error came from.
+            Log.w(TAG, "[${session.id}] failed: $msg " + formatSummary(t0, sttMs, inspectMs, llmMs, ttsMs))
             _state.value = SessionState.Error(session, msg)
         }
     }
@@ -129,6 +154,28 @@ class SessionOrchestrator @Inject constructor(
             "I can't read the screen right now. Please re-enable accessibility access for Readout in Settings."
         ScreenReadResult.Unavailable.Reason.ROOT_NOT_AVAILABLE ->
             "I can't see the screen right now. Try again in a moment."
+    }
+
+    /**
+     * One-line per-session timing summary. Stages that didn't run (because the
+     * pipeline short-circuited or failed before reaching them) are omitted, so
+     * the line tells you both what happened and how long each completed stage
+     * took. `total` is always wall-clock from activation to whichever exit
+     * point this is called from — useful for tracking the ~3s end-to-end
+     * budget without summing per-stage values.
+     */
+    private fun formatSummary(
+        t0: Long,
+        sttMs: Long?,
+        inspectMs: Long?,
+        llmMs: Long?,
+        ttsMs: Long?,
+    ): String = buildString {
+        sttMs?.let { append("stt=${it}ms ") }
+        inspectMs?.let { append("inspect=${it}ms ") }
+        llmMs?.let { append("llm=${it}ms ") }
+        ttsMs?.let { append("tts=${it}ms ") }
+        append("total=${System.currentTimeMillis() - t0}ms")
     }
 
     private companion object {
