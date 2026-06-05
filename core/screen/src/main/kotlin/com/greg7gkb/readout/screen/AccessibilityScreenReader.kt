@@ -52,10 +52,10 @@ class AccessibilityScreenReader @Inject constructor(
 
         var root = service.rootInActiveWindow
         if (root?.packageName == SYSTEM_UI_PACKAGE) {
-            // Notification shade or quick settings is the focused window
-            // (e.g. user triggered inspect via the notification action).
-            // Dismiss and re-read so we capture the underlying foreground
-            // app instead of the shade's own view tree.
+            // Notification shade or quick settings is the focused window —
+            // happens when the user has the shade pulled down at the moment
+            // an adb-broadcast inspect/ask fires. Dismiss and re-read so we
+            // capture the underlying foreground app instead of the shade.
             Log.i(TAG, "active window is $SYSTEM_UI_PACKAGE; dismissing shade and retrying")
             service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
             delay(SHADE_DISMISS_DELAY_MS)

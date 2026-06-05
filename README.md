@@ -10,7 +10,7 @@ A user-initiated Android app that listens for natural-language voice queries abo
 
 **Phase 1 — Foundations: complete.** A multi-module Hilt-wired skeleton with stub implementations (`EchoClient` LLM, `FakeScreenReader`, no-op wake-word) and real Android implementations of speech recognition and TTS, all driven by a `SessionOrchestrator` running inside a `FOREGROUND_SERVICE_MICROPHONE` foreground service. Validated end-to-end on a Pixel 7 — tap → speak → hear the echoed phrase spoken back.
 
-**Phase 2 — Screen reading via AccessibilityService: complete.** Real `AccessibilityScreenReader` (`:core:screen`) walks the foreground window's view tree on demand via a pure, unit-tested `NodeWalker`. Onboarding deep-links the user into Accessibility Settings as a focused step. A debug-command dispatcher exposes `inspect` via both ADB broadcast and a session-notification action, so target-app screens can be dumped without going through the speech pipeline. Phase 3 target (Android Settings) selected with rationale in [`docs/phase3_target.md`](docs/phase3_target.md).
+**Phase 2 — Screen reading via AccessibilityService: complete.** Real `AccessibilityScreenReader` (`:core:screen`) walks the foreground window's view tree on demand via a pure, unit-tested `NodeWalker`. Onboarding deep-links the user into Accessibility Settings as a focused step. A debug-command dispatcher exposes `inspect` (and `ask`) via ADB broadcast, so target-app screens can be dumped without going through the speech pipeline. Phase 3 target (Android Settings) selected with rationale in [`docs/phase3_target.md`](docs/phase3_target.md).
 
 Next up: **Phase 3 — Query-to-answer pipeline.**
 
@@ -138,7 +138,7 @@ Watch the result on a second terminal:
 adb logcat -s Readout/Debug:V Readout/Screen:V
 ```
 
-The same inspection is wired to the **Inspect** action on the session notification, which dismisses the shade first so it captures the underlying app rather than SystemUI.
+If the notification shade is pulled down when an `inspect` (or `ask`) broadcast fires, the screen reader detects SystemUI as the focused window, dismisses the shade, and re-reads — so the dump captures the underlying app rather than the shade itself.
 
 ### Ask a question (bypass STT)
 
