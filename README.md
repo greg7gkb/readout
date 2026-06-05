@@ -34,6 +34,66 @@ Multi-module Gradle, interface-driven, Hilt DI. Every external dependency lives 
 
 `:core:session` and `:feature:*` never depend on concrete implementations — only interfaces. Implementations are wired exclusively in `:app`.
 
+`SessionOrchestrator` depends only on the five `:core` interfaces; the foreground service owns it, and concrete implementations plug in via Hilt:
+
+```mermaid
+classDiagram
+    direction LR
+
+    class ReadoutService {
+        +start()
+        +stop()
+    }
+    class SessionOrchestrator {
+        +state StateFlow~SessionState~
+        +isRunning StateFlow~Boolean~
+        +start(scope) Job
+        +stop()
+    }
+
+    class Activator {
+        <<interface>>
+        +activations() Flow~Activation~
+    }
+    class SpeechRecognizer {
+        <<interface>>
+        +listen() Flow~Transcript~
+    }
+    class ScreenReader {
+        <<interface>>
+        +inspect() ScreenInspection
+    }
+    class LlmClient {
+        <<interface>>
+        +answer(question, screen, appName) Answer
+    }
+    class TtsEngine {
+        <<interface>>
+        +speak(text, prefs)
+    }
+
+    class ManualActivator
+    class AndroidSpeechRecognizer
+    class AccessibilityScreenReader
+    class FakeScreenReader
+    class EchoClient
+    class AndroidTtsEngine
+
+    ReadoutService o--> SessionOrchestrator
+    SessionOrchestrator ..> Activator
+    SessionOrchestrator ..> SpeechRecognizer
+    SessionOrchestrator ..> ScreenReader
+    SessionOrchestrator ..> LlmClient
+    SessionOrchestrator ..> TtsEngine
+
+    ManualActivator ..|> Activator
+    AndroidSpeechRecognizer ..|> SpeechRecognizer
+    AccessibilityScreenReader ..|> ScreenReader
+    FakeScreenReader ..|> ScreenReader
+    EchoClient ..|> LlmClient
+    AndroidTtsEngine ..|> TtsEngine
+```
+
 **Build flavors:**
 - `dev` — stub implementations (default during prototype)
 - `cloud` — cloud LLM backend (wires in Phase 3)
