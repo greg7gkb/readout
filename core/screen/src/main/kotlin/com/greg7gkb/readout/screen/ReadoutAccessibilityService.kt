@@ -1,10 +1,8 @@
 package com.greg7gkb.readout.screen
 
-import android.accessibilityservice.AccessibilityButtonController
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
-import com.greg7gkb.readout.wake.ManualActivator
 import com.greg7gkb.readout.wake.WindowStateActivator
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -17,9 +15,14 @@ import javax.inject.Inject
  *  - [WindowStateActivator] is fed every `TYPE_WINDOW_STATE_CHANGED` event so
  *    the notification-shade Trigger action can defer its activation until
  *    the shade is dismissed and the underlying app's window is active.
- *  - [onAccessibilityButtonClicked] handles the user-configured Accessibility
- *    Shortcut (floating button / volume-keys / 2-finger gesture, picked in
- *    system Settings → Accessibility → Shortcut → Readout).
+ *
+ * Note: the service deliberately does NOT declare
+ * `flagRequestAccessibilityButton`. On Android 14+ Pixel devices the
+ * Settings UI treats "Accessibility shortcut" as the single enable/disable
+ * toggle for the whole service — turning off the shortcut disables
+ * accessibility too, which kills screen reading. Trigger surfaces other
+ * than the in-app button live elsewhere: the foreground-service
+ * notification's Trigger action is the always-available path.
  */
 @AndroidEntryPoint
 class ReadoutAccessibilityService : AccessibilityService() {
@@ -30,23 +33,8 @@ class ReadoutAccessibilityService : AccessibilityService() {
     @Inject
     lateinit var windowStateActivator: WindowStateActivator
 
-    @Inject
-    lateinit var manualActivator: ManualActivator
-
     override fun onServiceConnected() {
         holder.bind(this)
-        // Register the accessibility-button callback. The shortcut surface
-        // (floating button, volume-keys hold, or 2-finger gesture — picked
-        // by the user in system Settings → Accessibility → Shortcut → Readout)
-        // routes through the same controller callback regardless of modality.
-        accessibilityButtonController.registerAccessibilityButtonCallback(
-            object : AccessibilityButtonController.AccessibilityButtonCallback() {
-                override fun onClicked(controller: AccessibilityButtonController) {
-                    Log.i(TAG, "accessibility shortcut invoked")
-                    manualActivator.trigger(ManualActivator.Source.Tap)
-                }
-            }
-        )
         Log.i(TAG, "service connected")
     }
 
