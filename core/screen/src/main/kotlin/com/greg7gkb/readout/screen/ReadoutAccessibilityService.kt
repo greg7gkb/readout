@@ -16,13 +16,16 @@ import javax.inject.Inject
  *    the notification-shade Trigger action can defer its activation until
  *    the shade is dismissed and the underlying app's window is active.
  *
- * Note: the service deliberately does NOT declare
- * `flagRequestAccessibilityButton`. On Android 14+ Pixel devices the
- * Settings UI treats "Accessibility shortcut" as the single enable/disable
- * toggle for the whole service — turning off the shortcut disables
- * accessibility too, which kills screen reading. Trigger surfaces other
- * than the in-app button live elsewhere: the foreground-service
- * notification's Trigger action is the always-available path.
+ * Accessibility-button shortcut: explored and dropped. The native Android
+ * behavior makes it impossible to have both (a) a working button click
+ * callback and (b) shortcut-toggle independent of service-toggle, within
+ * one accessibility service. With `flagRequestAccessibilityButton` set the
+ * callback fires, but Pixel Settings cascades shortcut-off → service-off
+ * (kills screen reading). Without the flag the callback never fires —
+ * Android falls back to a default "toggle the service" behavior on button
+ * tap. The clean fixes (two services, or a Quick Settings tile) weren't
+ * worth the carry right now; the foreground-service notification's
+ * Trigger action covers the always-available trigger use case.
  */
 @AndroidEntryPoint
 class ReadoutAccessibilityService : AccessibilityService() {
