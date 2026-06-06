@@ -1,11 +1,15 @@
 package com.greg7gkb.readout.debug
 
+import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.util.Log
 import com.greg7gkb.readout.audio.TtsEngine
 import com.greg7gkb.readout.llm.LlmClient
+import com.greg7gkb.readout.screen.ReadoutAccessibilityServiceHolder
 import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
+import com.greg7gkb.readout.wake.ManualActivator
+import com.greg7gkb.readout.wake.WindowStateActivator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,10 +38,34 @@ class DebugCommandDispatcher @Inject constructor(
     private val screenReader: ScreenReader,
     private val llmClient: LlmClient,
     private val ttsEngine: TtsEngine,
+    private val manualActivator: ManualActivator,
+    private val windowStateActivator: WindowStateActivator,
+    private val accessibilityServiceHolder: ReadoutAccessibilityServiceHolder,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val commands: Map<String, DebugCommand> = mapOf(
+        // `trigger` fires a tap-to-talk activation. Routing:
+        //   - Notification "Trigger" action fires this broadcast while the
+        //     shade is still the focused window. The dispatcher arms the
+        //     [WindowStateActivator] and explicitly dismisses the shade —
+        //     the activation fires once the underlying app's window becomes
+        //     active (so the orchestrator inspects the real app, not the
+        //     shade's view tree).
+        //   - ADB broadcast or any other path with no shade open fires the
+        //     activation immediately via [ManualActivator].
+        CMD_TRIGGER to DebugCommand { _ ->
+            val service = accessibilityServiceHolder.service.value
+            val focused = service?.rootInActiveWindow?.packageName?.toString()
+            if (service != null && focused == SYSTEM_UI_PACKAGE) {
+                Log.i(TAG, "trigger: shade is open — arming and dismissing")
+                windowStateActivator.arm()
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+            } else {
+                Log.i(TAG, "trigger: firing immediately focused=$focused")
+                manualActivator.trigger(ManualActivator.Source.NotificationAction)
+            }
+        },
         CMD_INSPECT to DebugCommand { _ ->
             when (val result = screenReader.inspect()) {
                 is ScreenReadResult.Available -> {
@@ -160,6 +188,8 @@ class DebugCommandDispatcher @Inject constructor(
         const val EXTRA_SPEAK = "speak"
         const val CMD_INSPECT = "inspect"
         const val CMD_ASK = "ask"
+        const val CMD_TRIGGER = "trigger"
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val TAG = "Readout/Debug"
     }
 }

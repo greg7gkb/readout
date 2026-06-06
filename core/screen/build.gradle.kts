@@ -29,6 +29,10 @@ android {
 
 dependencies {
     api(project(":core:common"))
+    // The accessibility service feeds window-state events into the wake
+    // module's WindowStateActivator (notification-shade-triggered activation
+    // pattern). Low-coupling: only the service consumes from :core:wake.
+    implementation(project(":core:wake"))
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

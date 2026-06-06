@@ -16,6 +16,8 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.greg7gkb.readout.MainActivity
 import com.greg7gkb.readout.R
+import com.greg7gkb.readout.debug.DebugCommandDispatcher
+import com.greg7gkb.readout.debug.DebugCommandReceiver
 import com.greg7gkb.readout.session.SessionOrchestrator
 import com.greg7gkb.readout.session.SessionState
 import com.greg7gkb.readout.session.summary
@@ -105,6 +107,19 @@ class ReadoutService : LifecycleService() {
             Intent(this, ReadoutService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Trigger an activation from anywhere via the notification shade. The
+        // dispatcher arms WindowStateActivator and dismisses the shade; the
+        // actual orchestrator pipeline only fires once the underlying app's
+        // window is active, so the screen reader sees the real app rather
+        // than the shade's view tree.
+        val triggerIntent = PendingIntent.getBroadcast(
+            this,
+            REQ_TRIGGER,
+            Intent(DebugCommandReceiver.ACTION)
+                .setPackage(packageName)
+                .putExtra(DebugCommandDispatcher.EXTRA_CMD, DebugCommandDispatcher.CMD_TRIGGER),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -114,6 +129,7 @@ class ReadoutService : LifecycleService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
+            .addAction(0, "Trigger", triggerIntent)
             .addAction(0, "Stop", stopIntent)
             .build()
     }
@@ -146,6 +162,7 @@ class ReadoutService : LifecycleService() {
 
         private const val REQ_OPEN = 100
         private const val REQ_STOP = 101
+        private const val REQ_TRIGGER = 102
         private const val TAG = "Readout/Service"
 
         fun start(context: Context) {
