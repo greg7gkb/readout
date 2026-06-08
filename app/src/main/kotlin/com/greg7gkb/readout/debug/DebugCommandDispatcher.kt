@@ -9,10 +9,13 @@ import com.greg7gkb.readout.screen.ReadoutAccessibilityServiceHolder
 import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.wake.ManualActivator
+import com.greg7gkb.readout.wake.WakeWordEngine
 import com.greg7gkb.readout.wake.WindowStateActivator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,8 +44,16 @@ class DebugCommandDispatcher @Inject constructor(
     private val manualActivator: ManualActivator,
     private val windowStateActivator: WindowStateActivator,
     private val accessibilityServiceHolder: ReadoutAccessibilityServiceHolder,
+    private val wakeWordEngine: WakeWordEngine,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Currently-running `wake start` collector, if any. Held here (not in a
+     *  command-local val) so a follow-up `wake stop` can cancel it. Reads and
+     *  writes only happen from the IO scope; race window is benign — at worst
+     *  a second `start` will log "already running" and no-op. */
+    @Volatile
+    private var wakeCollectorJob: Job? = null
 
     private val commands: Map<String, DebugCommand> = mapOf(
         // `trigger` fires a tap-to-talk activation. Routing:
@@ -146,6 +157,48 @@ class DebugCommandDispatcher @Inject constructor(
             }
             Log.i(TAG, "ask summary " + formatSummary(t0, inspectMs, llmMs, ttsMs))
         },
+        // `wake start` and `wake stop`: ad-hoc validation entry for the OWW
+        // engine before the Phase 4.5 service-owned lifecycle lands. Starts
+        // collecting WakeEvents and logging each detection; stop cancels the
+        // collector and releases AudioRecord.
+        //
+        //   adb shell am broadcast \
+        //     -a com.greg7gkb.readout.action.DEBUG_COMMAND --es cmd wake-start \
+        //     -p com.greg7gkb.readout.cloud
+        //
+        // Say "Hey Jarvis" — expect a Readout/Wake "DETECTED" log line.
+        CMD_WAKE_START to DebugCommand { _ ->
+            if (wakeCollectorJob?.isActive == true) {
+                Log.w(TAG, "wake-start: already running")
+                return@DebugCommand
+            }
+            Log.i(TAG, "wake-start: collecting WakeEvents — say 'Hey Jarvis'")
+            wakeCollectorJob = scope.launch {
+                try {
+                    wakeWordEngine.events().collect { event ->
+                        Log.i(
+                            TAG,
+                            "wake event: ts=${event.timestampMillis} conf=${event.confidence}",
+                        )
+                    }
+                } catch (t: Throwable) {
+                    Log.e(TAG, "wake collector failed", t)
+                } finally {
+                    Log.i(TAG, "wake collector exited")
+                }
+            }
+        },
+        CMD_WAKE_STOP to DebugCommand { _ ->
+            val job = wakeCollectorJob
+            if (job == null || !job.isActive) {
+                Log.w(TAG, "wake-stop: nothing running")
+                wakeCollectorJob = null
+                return@DebugCommand
+            }
+            Log.i(TAG, "wake-stop: cancelling collector")
+            job.cancel()
+            wakeCollectorJob = null
+        },
     )
 
     private fun unavailableMessage(reason: ScreenReadResult.Unavailable.Reason): String = when (reason) {
@@ -189,6 +242,8 @@ class DebugCommandDispatcher @Inject constructor(
         const val CMD_INSPECT = "inspect"
         const val CMD_ASK = "ask"
         const val CMD_TRIGGER = "trigger"
+        const val CMD_WAKE_START = "wake-start"
+        const val CMD_WAKE_STOP = "wake-stop"
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val TAG = "Readout/Debug"
     }

@@ -6,13 +6,11 @@ import kotlinx.coroutines.flow.Flow
 /**
  * Continuously listens for a wake word and emits [WakeEvent]s on detection.
  *
- * Implementations:
- *  - [NoopWakeWordEngine] — Phase 1 placeholder; emits nothing
- *  - PorcupineWakeWordEngine — Phase 4 real impl backed by Picovoice Porcupine
- *  - (alternative) OpenWakeWordEngine if Porcupine licensing blocks the Play Store
+ * Current implementation: [OpenWakeWordEngine] (Apache-2.0; "Hey Jarvis").
  *
- * Engines are expected to run continuously while the foreground service is
- * active and stop when their collector is cancelled.
+ * Engines are expected to run continuously while their collector is active
+ * (i.e. while the foreground service is up) and release their AudioRecord
+ * cleanly when the collector cancels.
  */
 interface WakeWordEngine {
     fun events(): Flow<WakeEvent>

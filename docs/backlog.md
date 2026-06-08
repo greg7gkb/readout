@@ -24,6 +24,51 @@ baseline.
 Phase 4 (wake word + tap-to-talk) is going first so activation work isn't
 blocked on device arrival.
 
+## 16 KB page-size compatibility (surfaced 2026-06-08, Phase 4.2)
+
+**Symptom.** Pixel 7 on Android 15+ shows an "Android App Compatibility"
+warning dialog on first launch of the dev APK:
+
+> This app isn't 16 KB compatible. ELF alignment check failed.
+> - `lib/arm64-v8a/libonnxruntime.so` : Unknown error
+> - `lib/arm64-v8a/libonnxruntime4j_jni.so` : LOAD segment not aligned
+> - `lib/arm64-v8a/libandroidx.graphics.path.so` : Unknown error
+
+**What's actually happening.** Android 15 added a check that fires for
+debuggable APKs on devices that support 16 KB pages. Our two ONNX libs
+(from `onnxruntime-android 1.22.0`, the latest published version) were
+built before the upstream 16 KB alignment fix landed in
+[ORT PR #24947](https://github.com/microsoft/onnxruntime/pull/24947) on
+2025-06-04 — that PR was merged *after* 1.22.0 shipped (2025-05-09), so
+no published Maven artifact carries it yet. `libandroidx.graphics.path.so`
+is a transitive from `compose-bom 2024.12.01` and presumably newer BOMs
+have aligned versions.
+
+**Is it a real blocker?** Validated on Pixel 7 (35101FDH2002RU) at
+2026-06-08: warning dismisses cleanly, ONNX sessions load, AudioRecord
+runs, "Hey Jarvis" detections fire with scores 0.72–0.88. The warning
+is dev-advisory only on debug builds. **Release builds are not affected
+by this dialog** but if Google enforces 16 KB alignment for Play Store
+acceptance (currently advisory only — Aug 2025 was the soft deadline), we
+will be blocked at submission until upstream ships a fix.
+
+**Resolution path.**
+1. Watch the [`onnxruntime-android` Maven page](https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/)
+   for a 1.23+ release. Bump the version pin in `libs.versions.toml`.
+2. Bump `compose-bom` to a release that includes 16 KB-aligned
+   `androidx.graphics.path` (any 2025-mid or later should do).
+3. If ORT 1.23+ doesn't ship before we need Play Store: option B is
+   switching the wake-word engine to TFLite (OWW v0.5.1 also publishes
+   `.tflite` variants of all three models, and `tensorflow-lite` Android
+   natives have been 16 KB-aligned since early 2025). Cost: ~half a day
+   to swap the `OrtSession.run` calls for the TFLite interpreter API;
+   streaming logic in `OwwAudioPreprocessor` is unchanged.
+
+**Files involved:**
+- `gradle/libs.versions.toml` — `onnxruntime-android` + `compose-bom` pins
+- `core/wake/.../OpenWakeWordEngine.kt` — only the inference call sites
+  would change in the TFLite fallback
+
 ## STT: disambiguate "user said nothing" from a real error; revisit timeout
 
 **Symptom.** Tap "Trigger activation", say nothing. After ~4s of silence,

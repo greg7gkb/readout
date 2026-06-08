@@ -47,7 +47,7 @@ All `@Binds` modules live in `app/src/main/kotlin/com/greg7gkb/readout/di/`:
 - `AudioModule` → `AndroidSpeechRecognizer` / `AndroidTtsEngine`
 - `LlmModule` → `EchoClient` (dev stub for all flavors during Phase 1)
 - `ScreenModule` → `FakeScreenReader` (real `AccessibilityScreenReader` lands in Phase 2)
-- `WakeModule` → `NoopWakeWordEngine` + `ManualActivator` (real Porcupine in Phase 4)
+- `WakeModule` → `OpenWakeWordEngine` ("Hey Jarvis", OWW v0.5.1 ONNX models, Apache-2.0) + `ManualActivator`
 
 ### Build flavors
 
