@@ -3,6 +3,27 @@
 Items deferred from a phase but worth tracking until they're picked up or
 explicitly dropped. Loose order — pick what hurts most when revisiting.
 
+## Phase 3.5 — AICore on-device LLM path (parked 2026-06-08)
+
+**Why parked:** hardware-blocked. Step 7 of Phase 3 needs Tensor G3+ to run
+Gemini Nano via AICore, and the borrowed Pixel 10 Pro hasn't arrived. The
+`onDevice` build flavor currently binds `EchoClient` as a placeholder — the
+`cloud` flavor (Claude Haiku 4.5 / Gemini Flash, runtime-selectable) is the
+working LLM path until then.
+
+**Trigger to pick this up:** the flagship lands. Scope is fully written up in
+[`plan.md`](plan.md) under "Phase 3.5 — AICore on-device path". Exit criteria
+are the same 13/13 query suite Phase 3 already passed against Android
+Settings, but running through `AICoreClient` on the flagship.
+
+**Decision out of this phase:** on-device default, cloud default, or hybrid
+(on-device first + cloud fallback for hard queries). The Phase 3 cloud
+results in [`phase3_queries.md`](phase3_queries.md) are the comparison
+baseline.
+
+Phase 4 (wake word + tap-to-talk) is going first so activation work isn't
+blocked on device arrival.
+
 ## STT: disambiguate "user said nothing" from a real error; revisit timeout
 
 **Symptom.** Tap "Trigger activation", say nothing. After ~4s of silence,

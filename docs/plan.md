@@ -223,7 +223,10 @@ Per-step rhythm: write code → build → deploy → validate (logcat/screenshot
 
 **Exit criteria (Phase 3):** Met. Spoken answers matching on-screen values within ~3 seconds, validated across the 13-variant suite (≥ planned 10), against Android Settings → About phone. Final pass rate 13/13 documented in [`phase3_queries.md`](phase3_queries.md). The `cloud` flavor is end-to-end with Claude Haiku 4.5 (Gemini Flash also wired and runtime-selectable via `CloudLlmConfig`). The `onDevice` flavor is explicitly deferred to Phase 3.5 — see below for the reason.
 
-## Phase 3.5 — AICore on-device path (deferred from Phase 3 Step 7)
+## Phase 3.5 — AICore on-device path (deferred from Phase 3 Step 7) — 📥 BACKLOG / PARKED
+
+**Status (as of 2026-06-08):** Explicitly skipped to start Phase 4. Picked up
+when the borrowed Pixel 10 Pro arrives. Tracked in [`backlog.md`](backlog.md).
 
 **Deferred because:** the borrowed Pixel 10 Pro hasn't arrived yet. Step 7 requires Tensor G3+ hardware to run Gemini Nano via AICore; the Pixel 7 dev device can't host it. Rather than block Phase 4 (wake word + tap-to-talk) on hardware availability, Step 7's scope moves into its own phase to be picked up when the device lands.
 
