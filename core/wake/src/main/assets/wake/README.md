@@ -1,32 +1,38 @@
 # OpenWakeWord model assets
 
 Phase 4 wake-word detection uses three ONNX files from the
-[dscripka/openWakeWord](https://github.com/dscripka/openWakeWord) project.
-They are NOT committed to this repo (model binaries belong in release
-artifacts, not source control); fetch them locally before the first build
-that exercises the wake-word path.
+[dscripka/openWakeWord](https://github.com/dscripka/openWakeWord) project,
+release [v0.5.1](https://github.com/dscripka/openWakeWord/releases/tag/v0.5.1).
+They're fetched automatically at build time by the `downloadOwwModels`
+Gradle task (see `core/wake/build.gradle.kts`) — a fresh clone +
+`./gradlew :app:assembleDevDebug` produces a runnable APK with no manual
+setup. The binaries themselves are gitignored.
 
-Required files in this directory:
+Files that end up here:
 
-| File | Purpose |
-|---|---|
-| `melspectrogram.onnx` | Shared audio→mel feature extractor |
-| `embedding_model.onnx` | Shared audio embedding (Google's `speech_embedding`) |
-| `hey_jarvis_v0.1.onnx` | Wake-word classifier head for "Hey Jarvis" |
+| File | Purpose | Size |
+|---|---|---|
+| `melspectrogram.onnx` | Shared audio→mel feature extractor | ~1.0 MB |
+| `embedding_model.onnx` | Shared audio embedding (Google's `speech_embedding`) | ~1.3 MB |
+| `hey_jarvis_v0.1.onnx` | Wake-word classifier head for "Hey Jarvis" | ~1.2 MB |
 
-Find the current download URLs in the OWW repo's
-[release page](https://github.com/dscripka/openWakeWord/releases) or under
-`openwakeword/resources/models/` in the repo. The classifier filename may
-have bumped (`v0.2`, etc.); update `OpenWakeWordEngine.MODEL_CLASSIFIER`
-to match what you fetched.
+To force a re-download (e.g. bumping to a newer release):
+
+```
+rm core/wake/src/main/assets/wake/*.onnx
+./gradlew :core:wake:downloadOwwModels
+```
+
+Or just bump the URL in `owwModels` — Gradle's input/output tracking will
+invalidate the task automatically.
 
 ## Why "Hey Jarvis"
 
-Decided in Phase 4 planning — see chat log. Short version: most
-battle-tested OWW pre-trained model (Home Assistant ships it as a default),
-three syllables with strong plosive + sibilant anchors, no custom-training
-pipeline needed. Swap to a custom-trained "Hey Readout" model in Phase 7
-polish if the prototype validates.
+Decided in Phase 4 planning. Short version: most battle-tested OWW
+pre-trained model (Home Assistant ships it as a default), three syllables
+with strong plosive + sibilant anchors, no custom-training pipeline needed.
+Swap to a custom-trained "Hey Readout" model in Phase 7 polish if the
+prototype validates.
 
 ## License note
 

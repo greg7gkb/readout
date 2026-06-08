@@ -1,0 +1,3 @@
+# OWW model binaries are fetched at build time by the `downloadOwwModels`
+# Gradle task in core/wake/build.gradle.kts — they don't belong in git.
+*.onnx
