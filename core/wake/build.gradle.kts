@@ -29,6 +29,11 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
+    implementation(libs.kotlinx.coroutines.android)
+
+    // OpenWakeWord runtime — Phase 4. Models live in src/main/assets/wake/.
+    implementation(libs.onnxruntime.android)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
