@@ -1,6 +1,8 @@
 package com.greg7gkb.readout.debug
 
 import android.accessibilityservice.AccessibilityService
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.greg7gkb.readout.audio.TtsEngine
@@ -11,6 +13,7 @@ import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.wake.ManualActivator
 import com.greg7gkb.readout.wake.WakeWordEngine
 import com.greg7gkb.readout.wake.WindowStateActivator
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +41,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class DebugCommandDispatcher @Inject constructor(
+    @ApplicationContext context: Context,
     private val screenReader: ScreenReader,
     private val llmClient: LlmClient,
     private val ttsEngine: TtsEngine,
@@ -46,6 +50,8 @@ class DebugCommandDispatcher @Inject constructor(
     private val accessibilityServiceHolder: ReadoutAccessibilityServiceHolder,
     private val wakeWordEngine: WakeWordEngine,
 ) {
+    private val keyguardManager: KeyguardManager =
+        context.getSystemService(KeyguardManager::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Currently-running `wake start` collector, if any. Held here (not in a
@@ -57,24 +63,34 @@ class DebugCommandDispatcher @Inject constructor(
 
     private val commands: Map<String, DebugCommand> = mapOf(
         // `trigger` fires a tap-to-talk activation. Routing:
-        //   - Notification "Trigger" action fires this broadcast while the
-        //     shade is still the focused window. The dispatcher arms the
-        //     [WindowStateActivator] and explicitly dismisses the shade —
-        //     the activation fires once the underlying app's window becomes
-        //     active (so the orchestrator inspects the real app, not the
-        //     shade's view tree).
+        //   - Keyguard is up: fire immediately. The window-state dance below
+        //     would arm forever — keyguard is com.android.systemui and stays
+        //     focused until unlock, so WindowStateActivator never sees a
+        //     non-SystemUI window event and the arm expires silently.
+        //   - Notification "Trigger" action while unlocked fires this
+        //     broadcast with the shade still the focused window. Arm
+        //     [WindowStateActivator] and dismiss the shade — the activation
+        //     fires once the underlying app's window becomes active (so the
+        //     orchestrator inspects the real app, not the shade's view tree).
         //   - ADB broadcast or any other path with no shade open fires the
         //     activation immediately via [ManualActivator].
         CMD_TRIGGER to DebugCommand { _ ->
             val service = accessibilityServiceHolder.service.value
             val focused = service?.rootInActiveWindow?.packageName?.toString()
-            if (service != null && focused == SYSTEM_UI_PACKAGE) {
-                Log.i(TAG, "trigger: shade is open — arming and dismissing")
-                windowStateActivator.arm()
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
-            } else {
-                Log.i(TAG, "trigger: firing immediately focused=$focused")
-                manualActivator.trigger(ManualActivator.Source.NotificationAction)
+            when {
+                keyguardManager.isKeyguardLocked -> {
+                    Log.i(TAG, "trigger: keyguard locked — firing immediately")
+                    manualActivator.trigger(ManualActivator.Source.NotificationAction)
+                }
+                service != null && focused == SYSTEM_UI_PACKAGE -> {
+                    Log.i(TAG, "trigger: shade is open — arming and dismissing")
+                    windowStateActivator.arm()
+                    service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+                }
+                else -> {
+                    Log.i(TAG, "trigger: firing immediately focused=$focused")
+                    manualActivator.trigger(ManualActivator.Source.NotificationAction)
+                }
             }
         },
         CMD_INSPECT to DebugCommand { _ ->
