@@ -10,13 +10,17 @@ import com.greg7gkb.readout.common.model.TtsPrefs
 import com.greg7gkb.readout.llm.LlmClient
 import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
+import com.greg7gkb.readout.common.model.WakeEvent
 import com.greg7gkb.readout.wake.Activator
+import com.greg7gkb.readout.wake.WakeWordEngine
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -47,6 +51,7 @@ class SessionOrchestratorTest {
             ),
             llmClient = llm,
             ttsEngine = tts,
+            wakeWordEngine = RecordingWakeWordEngine(),
         )
 
         orchestrator.start(this)
@@ -78,6 +83,7 @@ class SessionOrchestratorTest {
             ),
             llmClient = llm,
             ttsEngine = tts,
+            wakeWordEngine = RecordingWakeWordEngine(),
         )
 
         orchestrator.start(this)
@@ -112,6 +118,7 @@ class SessionOrchestratorTest {
             screenReader = StubScreenReader(ScreenReadResult.Available(inspection)),
             llmClient = llm,
             ttsEngine = tts,
+            wakeWordEngine = RecordingWakeWordEngine(),
         )
 
         orchestrator.start(this)
@@ -125,6 +132,72 @@ class SessionOrchestratorTest {
 
         orchestrator.stop()
     }
+
+    @Test
+    fun `pipeline pauses wake-word engine before STT and resumes after`() = runTest {
+        val activations = Channel<Activation>(Channel.BUFFERED)
+        val inspection = ScreenInspection(
+            foregroundPackage = "com.example.weather",
+            foregroundAppLabel = "Weather",
+            timestampMillis = 0L,
+            nodes = emptyList(),
+        )
+        val wake = RecordingWakeWordEngine()
+        val orchestrator = SessionOrchestrator(
+            activator = ChannelActivator(activations),
+            speechRecognizer = StubSpeechRecognizer(Transcript("hello", isFinal = true)),
+            screenReader = StubScreenReader(ScreenReadResult.Available(inspection)),
+            llmClient = RecordingLlmClient(Answer("ok", 0L)),
+            ttsEngine = RecordingTtsEngine(),
+            wakeWordEngine = wake,
+        )
+
+        orchestrator.start(this)
+        activations.send(Activation.Tap(timestampMillis = 0L))
+        advanceUntilIdle()
+
+        // Contract: pause before STT, resume after the whole pipeline. The
+        // resume must come AFTER pause in the call log — otherwise the engine
+        // would be unpaused when SpeechRecognizer wants the mic. This guards
+        // against a future refactor reordering or dropping either call.
+        assertEquals("pause+resume should each fire once", listOf("pause", "resume"), wake.calls)
+
+        orchestrator.stop()
+    }
+
+    @Test
+    fun `pipeline still resumes wake-word engine when STT throws`() = runTest {
+        val activations = Channel<Activation>(Channel.BUFFERED)
+        val wake = RecordingWakeWordEngine()
+        val orchestrator = SessionOrchestrator(
+            activator = ChannelActivator(activations),
+            speechRecognizer = ThrowingSpeechRecognizer(),
+            screenReader = StubScreenReader(
+                ScreenReadResult.Available(
+                    ScreenInspection(
+                        foregroundPackage = "x",
+                        foregroundAppLabel = "X",
+                        timestampMillis = 0L,
+                        nodes = emptyList(),
+                    ),
+                ),
+            ),
+            llmClient = ExplodingLlmClient(),
+            ttsEngine = RecordingTtsEngine(),
+            wakeWordEngine = wake,
+        )
+
+        orchestrator.start(this)
+        activations.send(Activation.Tap(timestampMillis = 0L))
+        advanceUntilIdle()
+
+        // The mic must be returned to the wake engine even on the error path.
+        // Without this guarantee a single STT failure would leave the engine
+        // paused indefinitely — every subsequent wake word would be missed.
+        assertEquals(listOf("pause", "resume"), wake.calls)
+
+        orchestrator.stop()
+    }
 }
 
 // --- test doubles ---
@@ -135,6 +208,25 @@ private class ChannelActivator(private val source: Channel<Activation>) : Activa
 
 private class StubSpeechRecognizer(private val final: Transcript) : SpeechRecognizer {
     override fun listen(): Flow<Transcript> = flowOf(final)
+}
+
+private class ThrowingSpeechRecognizer : SpeechRecognizer {
+    override fun listen(): Flow<Transcript> = flow {
+        throw IllegalStateException("simulated STT failure")
+    }
+}
+
+/** Records pause/resume call order; events() never emits. Tests assert on
+ *  [calls] to pin the mic-coordination contract. */
+private class RecordingWakeWordEngine : WakeWordEngine {
+    val calls = mutableListOf<String>()
+    override fun events(): Flow<WakeEvent> = emptyFlow()
+    override suspend fun pause() {
+        calls += "pause"
+    }
+    override suspend fun resume() {
+        calls += "resume"
+    }
 }
 
 private class StubScreenReader(

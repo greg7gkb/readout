@@ -13,7 +13,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
 import java.nio.FloatBuffer
@@ -32,13 +34,14 @@ import javax.inject.Singleton
  *    individual subscriber, so loading happens once per process.
  *  - Each subscription owns its own AudioRecord on VOICE_RECOGNITION. When the
  *    collector cancels, the recorder is stopped and released cleanly.
- *  - Mic contention with [com.greg7gkb.readout.audio.SpeechRecognizer] is
- *    handled at a higher layer (Phase 4.4 — pausing wake while STT runs).
+ *  - [pause]/[resume] mediate mic contention with Android's `SpeechRecognizer`
+ *    so the orchestrator's STT step can take the mic exclusively without
+ *    cancelling the wake-word subscription.
  *
  * Performance: Inference runs on Dispatchers.Default in 1280-sample (80 ms)
  * frames, so the engine produces ~12.5 classifier scores per second. The mel
- * + embedding + classifier path takes <5 ms per chunk on Pixel 7 in
- * preliminary tests (TBD; verify on first run).
+ * + embedding + classifier path takes <5 ms per chunk on Pixel 7 (validated
+ * Phase 4.2).
  */
 @Singleton
 class OpenWakeWordEngine @Inject constructor(
@@ -50,6 +53,20 @@ class OpenWakeWordEngine @Inject constructor(
     private var embeddingSession: OrtSession? = null
     private var classifierSession: OrtSession? = null
     private var preprocessor: OwwAudioPreprocessor? = null
+
+    /** True while the orchestrator (or any other caller) has explicitly asked
+     *  the engine to release the mic. The audio loop polls this between every
+     *  1280-sample chunk read, so pause latency is at most ~80 ms. */
+    private val pauseRequested = MutableStateFlow(false)
+
+    /** True while the audio loop has an active AudioRecord and is consuming
+     *  samples. Flipped to false (a) when [events] is not being collected,
+     *  (b) inside the loop's pause branch after AudioRecord is released, and
+     *  (c) in the finally block when the subscription ends.
+     *
+     *  [pause] suspends on this flow flipping false — that's what gives callers
+     *  the "the mic is now free" guarantee. */
+    private val activelyListening = MutableStateFlow(false)
 
     @Synchronized
     private fun ensureSessionsLoaded() {
@@ -75,6 +92,21 @@ class OpenWakeWordEngine @Inject constructor(
     private fun loadAsset(path: String): ByteArray =
         context.assets.open(path).use { it.readBytes() }
 
+    override suspend fun pause() {
+        pauseRequested.value = true
+        // Wait until the audio loop confirms it has released the recorder.
+        // No-op if the engine isn't currently listening (activelyListening
+        // is already false), so safe to call before any subscription exists.
+        activelyListening.first { !it }
+    }
+
+    override suspend fun resume() {
+        pauseRequested.value = false
+        // Don't wait for activelyListening to flip true — callers shouldn't
+        // block on the engine "reacquiring" the mic. The loop will recreate
+        // AudioRecord on its next iteration.
+    }
+
     override fun events(): Flow<WakeEvent> = channelFlow {
         ensureSessionsLoaded()
         val pp = preprocessor!!
@@ -82,37 +114,57 @@ class OpenWakeWordEngine @Inject constructor(
         val classifier = classifierSession!!
         pp.reset()
 
-        val minBufferBytes = AudioRecord.getMinBufferSize(
-            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-        )
-        val targetBufferBytes = maxOf(minBufferBytes, OwwAudioPreprocessor.CHUNK_SAMPLES * 4 * BYTES_PER_SAMPLE)
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            targetBufferBytes,
-        )
-        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-            recorder.release()
-            Log.e(TAG, "AudioRecord failed to initialize (state=${recorder.state})")
-            close()
-            return@channelFlow
-        }
-        recorder.startRecording()
-        Log.i(TAG, "OWW listening — chunk=${OwwAudioPreprocessor.CHUNK_SAMPLES} samples, buf=$targetBufferBytes B")
-
+        var recorder: AudioRecord? = null
         val chunk = ShortArray(OwwAudioPreprocessor.CHUNK_SAMPLES)
         var embeddingsSeen = 0
         var lastTriggerMs = 0L
         var maxScoreSinceLog = 0f
         var lastScoreLog = 0L
 
+        fun teardownRecorder() {
+            recorder?.let {
+                it.stop()
+                it.release()
+            }
+            recorder = null
+            pp.reset()
+            embeddingsSeen = 0
+        }
+
         try {
             while (isActive) {
+                // Pause branch: release the mic and suspend until resume.
+                if (pauseRequested.value) {
+                    if (recorder != null) {
+                        teardownRecorder()
+                        Log.i(TAG, "OWW paused — mic released")
+                    }
+                    activelyListening.value = false
+                    pauseRequested.first { !it }
+                    Log.i(TAG, "OWW resuming")
+                }
+
+                // Open AudioRecord on first iteration and after each resume.
+                if (recorder == null) {
+                    val opened = createRecorder()
+                    if (opened == null) {
+                        Log.e(TAG, "AudioRecord init failed; ending subscription")
+                        close()
+                        return@channelFlow
+                    }
+                    recorder = opened
+                    opened.startRecording()
+                    activelyListening.value = true
+                    Log.i(
+                        TAG,
+                        "OWW listening — chunk=${OwwAudioPreprocessor.CHUNK_SAMPLES} samples",
+                    )
+                }
+
+                val rec = recorder!!
                 var read = 0
                 while (read < chunk.size) {
-                    val n = recorder.read(chunk, read, chunk.size - read)
+                    val n = rec.read(chunk, read, chunk.size - read)
                     if (n <= 0) {
                         Log.w(TAG, "AudioRecord.read returned $n; stopping")
                         return@channelFlow
@@ -147,13 +199,34 @@ class OpenWakeWordEngine @Inject constructor(
                 }
             }
         } finally {
-            recorder.stop()
-            recorder.release()
+            teardownRecorder()
+            activelyListening.value = false
             Log.i(TAG, "OWW listener stopped")
         }
 
         awaitClose { /* recorder already released in finally */ }
     }.flowOn(Dispatchers.Default)
+
+    private fun createRecorder(): AudioRecord? {
+        val minBufferBytes = AudioRecord.getMinBufferSize(
+            SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val targetBufferBytes =
+            maxOf(minBufferBytes, OwwAudioPreprocessor.CHUNK_SAMPLES * 4 * BYTES_PER_SAMPLE)
+        val recorder = AudioRecord(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT,
+            targetBufferBytes,
+        )
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "AudioRecord state=${recorder.state} after construction")
+            recorder.release()
+            return null
+        }
+        return recorder
+    }
 
     private fun runClassifier(env: OrtEnvironment, session: OrtSession, featuresFlat: FloatArray): Float {
         // Input "x.1" shape [1, 16, 96] → output shape [1, 1].

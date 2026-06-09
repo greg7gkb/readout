@@ -9,6 +9,7 @@ import com.greg7gkb.readout.llm.LlmClient
 import com.greg7gkb.readout.screen.ScreenReadResult
 import com.greg7gkb.readout.screen.ScreenReader
 import com.greg7gkb.readout.wake.Activator
+import com.greg7gkb.readout.wake.WakeWordEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -31,6 +32,7 @@ import javax.inject.Singleton
 @Singleton
 class SessionOrchestrator @Inject constructor(
     private val activator: Activator,
+    private val wakeWordEngine: WakeWordEngine,
     private val speechRecognizer: SpeechRecognizer,
     private val screenReader: ScreenReader,
     private val llmClient: LlmClient,
@@ -90,6 +92,13 @@ class SessionOrchestrator @Inject constructor(
         var llmMs: Long? = null
         var ttsMs: Long? = null
         try {
+            // Mic coordination: wake-word listener releases the mic before
+            // SpeechRecognizer takes it. Suspend until the engine actually
+            // stops consuming audio — without this guarantee, STT can race
+            // with OWW's AudioRecord and either fail silently or capture
+            // a few hundred ms of nothing.
+            wakeWordEngine.pause()
+
             _state.value = SessionState.Listening(session)
             val transcript = speechRecognizer.listen().first { it.isFinal }
             sttMs = System.currentTimeMillis() - t0
@@ -146,6 +155,11 @@ class SessionOrchestrator @Inject constructor(
             // therefore most likely where the error came from.
             Log.w(TAG, "[${session.id}] failed: $msg " + formatSummary(t0, sttMs, inspectMs, llmMs, ttsMs))
             _state.value = SessionState.Error(session, msg)
+        } finally {
+            // Always resume wake — even on error / TTS path. Keep the entire
+            // pipeline window (including TTS) paused to avoid the speaker
+            // output re-triggering the wake word.
+            wakeWordEngine.resume()
         }
     }
 

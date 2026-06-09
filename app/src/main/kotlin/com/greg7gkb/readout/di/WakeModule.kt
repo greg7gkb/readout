@@ -1,7 +1,7 @@
 package com.greg7gkb.readout.di
 
 import com.greg7gkb.readout.wake.Activator
-import com.greg7gkb.readout.wake.ManualActivator
+import com.greg7gkb.readout.wake.CompositeActivator
 import com.greg7gkb.readout.wake.OpenWakeWordEngine
 import com.greg7gkb.readout.wake.WakeWordEngine
 import dagger.Binds
@@ -13,12 +13,11 @@ import javax.inject.Singleton
 /**
  * Bindings:
  *  - WakeWordEngine → OpenWakeWordEngine (OWW + onnxruntime-android, "Hey Jarvis").
- *    Loaded from `core/wake/src/main/assets/wake/`; see Phase 4.1 commits for
- *    the model fetch story. Real detection runs once the lifecycle owner —
- *    ReadoutService, wired in Phase 4.5 — starts collecting events().
- *  - Activator → ManualActivator (notification action + future tap-to-talk).
- *    Phase 4.3 will replace this with a CompositeActivator merging wake-word
- *    events + manual taps into one stream.
+ *  - Activator → CompositeActivator (merges wake-word events + manual taps
+ *    into a single Flow<Activation> for the orchestrator).
+ *
+ * ManualActivator stays available for direct injection — DebugCommandDispatcher
+ * still uses it for the notification "Trigger" action.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -30,5 +29,5 @@ abstract class WakeModule {
 
     @Binds
     @Singleton
-    abstract fun bindActivator(impl: ManualActivator): Activator
+    abstract fun bindActivator(impl: CompositeActivator): Activator
 }
