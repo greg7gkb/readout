@@ -239,7 +239,7 @@ When the Pixel 10 Pro is available, this phase's work:
 
 Exit criteria: same as Phase 3 Step 6 (13/13 query suite on Android Settings, ≤ 3s end-to-end), but on the on-device backend and on the flagship device.
 
-## Phase 4 — Activation: wake word + tap-to-talk
+## Phase 4 — Activation: wake word + tap-to-talk ✅ complete
 
 Goal: two equal-priority activation paths so the app fits multiple accessibility profiles.
 
@@ -249,6 +249,16 @@ Goal: two equal-priority activation paths so the app fits multiple accessibility
 - Test wake-word reliability with phone in pocket (muffled audio path).
 
 **Exit criteria:** Both activation paths work reliably. Lock phone, put in pocket, walk around for 60s without false activations, then say wake word + query and get an answer. Separately, tap the notification action without unlocking and get the same result.
+
+**Outcome.** Pivoted from Porcupine to **OpenWakeWord** (OWW v0.5.1 ONNX models, Apache-2.0, "Hey Jarvis" wake phrase) — no AccessKey, fully on-device. Step 1: runtime dep + assets scaffolding. Step 1b: Gradle task fetches OWW models at build. Step 2: end-to-end engine running on Pixel 7. Step 3: `CompositeActivator` merges wake + manual into one `Flow<Activation>`. Step 4: `pause()`/`resume()` on `WakeWordEngine` so wake engine and `SpeechRecognizer` don't fight for the mic — orchestrator pauses before STT and resumes in a `finally`. Pocket field test on 2026-06-09 covered all three exit-criteria checks:
+
+| Test | Result |
+|---|---|
+| 60 s pocket walk, screen locked | ✅ Max OWW score 0.005 / threshold 0.5, zero false activations |
+| Wake word + query from pocket, screen locked | ✅ 9.3 s end-to-end ("Hey Jarvis, what time is it") with real Claude Haiku answer |
+| Notification Trigger from lock screen | ✅ 5.9 s end-to-end after lock-screen fix |
+
+The notification-from-lock-screen test surfaced a bug in `WindowStateActivator`: it filters `com.android.systemui` window events out by design (so pulling the shade over an app doesn't trip it), but the keyguard *is* SystemUI and stays focused until unlock — so the activator armed and silently expired 10 s later. Fixed by checking `KeyguardManager.isKeyguardLocked` first in `CMD_TRIGGER` and firing `ManualActivator` immediately on that path. The "session calibration on app launch" bullet (ambient noise sample / sensitivity tune) is deferred — pocket-walk false-activation margin is two orders of magnitude on the threshold, so calibration isn't load-bearing for the prototype. Reopen if false activations become a problem in Phase 6's field test across distinct environments.
 
 ## Phase 5 — MediaProjection fallback
 
