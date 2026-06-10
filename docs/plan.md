@@ -7,6 +7,8 @@
 **Distribution:** Sideload for personal use during prototype; Play Store as eventual goal
 **Framing:** Accessibility tool first. The design center is motor impairment, low vision, and situational disability (hands occupied while cooking, driving, walking, holding a child).
 
+> **Status: paused 2026-06-09 after Phase 4.** The Phase 4 pocket field test surfaced an architectural blocker for the user's personal motivating case (cycling, phone pocketed, asking about RideWithGPS-style live data). When the screen is off or locked, AccessibilityService sees the keyguard rather than the underlying app, and MediaProjection captures the same view; the app process is alive in memory but its view tree is not reachable from public APIs. PIN/biometric cannot be bypassed. Reading foreground-service notifications was considered but the candidate apps don't post enough live data there to be useful. The realistic remaining product shape — "ask Readout about what's visible on your screen right now" (phone on bike mount, kitchen counter, car cradle) — preserves the accessibility framing but doesn't solve the originally motivating pocket use case, so the prototype is being parked at the end of Phase 4 rather than continued into Phase 5. Phases 1–4 are functionally complete; everything in the repo runs end-to-end on a Pixel 7. If picked back up, the first design question is whether to commit to the screen-visible framing or to pursue read+act (deeper accessibility-tool territory: tell the app to do something, don't just read it).
+
 > Provenance: original brainstorm at https://claude.ai/chat/4ef0e697-a037-4c84-b845-7c1a65124e5d
 
 ## Premise
